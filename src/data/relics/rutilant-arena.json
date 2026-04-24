@@ -1,0 +1,14 @@
+{
+  "id": "rutilant-arena",
+  "name": "赫々たる闘技場",
+  "rarity": [4, 5],
+  "type": "planar",
+  "effects": {
+    "twoPiece": "装備キャラの会心率が8%アップする。会心率が70%以上の時、通常攻撃と戦闘スキルのダメージが20%アップする。"
+  },
+  "pieces": [
+    { "slot": "sphere", "name": "赫々たる闘技場・次元球", "description": "群衆の歓声が結晶化した球体。" },
+    { "slot": "rope", "name": "赫々たる闘技場・連結縄", "description": "栄誉を讃える金の束縛紐。" }
+  ],
+  "source": "疑似形骸の領域・次元界遺物"
+}

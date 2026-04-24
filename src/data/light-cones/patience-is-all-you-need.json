@@ -1,0 +1,22 @@
+{
+  "id": "patience-is-all-you-need",
+  "name": "忍耐こそ全て",
+  "rarity": 5,
+  "path": "nihility",
+  "releaseVersion": "1.2",
+  "description": "カフカ向けに調整された虚無の光円錐。通常攻撃・戦闘スキル・必殺技で敵に攻撃した際、敵のスピードを減速させる継続効果を与える。",
+  "stats": {
+    "level80": { "hp": 1164, "atk": 635, "def": 463 }
+  },
+  "effect": {
+    "name": "時の波紋",
+    "descriptions": [
+      { "superimposition": 1, "description": "装備キャラの与ダメージが20%アップし、通常攻撃・戦闘スキル・必殺技で敵を攻撃した後、1秒につき12%減速のデバフを付与(最大3スタック)。" },
+      { "superimposition": 2, "description": "与ダメージ+25%、減速15%。" },
+      { "superimposition": 3, "description": "与ダメージ+30%、減速18%。" },
+      { "superimposition": 4, "description": "与ダメージ+35%、減速21%。" },
+      { "superimposition": 5, "description": "与ダメージ+40%、減速24%。" }
+    ]
+  },
+  "source": ["限定光円錐ガチャ"]
+}

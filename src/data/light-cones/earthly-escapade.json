@@ -1,0 +1,22 @@
+{
+  "id": "earthly-escapade",
+  "name": "地上の夜話",
+  "rarity": 5,
+  "path": "harmony",
+  "releaseVersion": "2.1",
+  "description": "花火の専用光円錐。仮面の味方全体の会心ダメージを底上げし、必殺技発動で仮面を付与する特殊効果を持つ。",
+  "stats": {
+    "level80": { "hp": 1164, "atk": 476, "def": 529 }
+  },
+  "effect": {
+    "name": "仮面舞踏会",
+    "descriptions": [
+      { "superimposition": 1, "description": "戦闘開始時と装備キャラの必殺技発動後、味方全体に「仮面」を2ターン付与。仮面状態の味方は会心ダメージが32%、装備キャラ以外が与える会心ダメージがさらに40%アップ。" },
+      { "superimposition": 2, "description": "会心ダメージ+40%、他味方の会心ダメージ+44%。" },
+      { "superimposition": 3, "description": "会心ダメージ+48%、他味方の会心ダメージ+48%。" },
+      { "superimposition": 4, "description": "会心ダメージ+56%、他味方の会心ダメージ+52%。" },
+      { "superimposition": 5, "description": "会心ダメージ+64%、他味方の会心ダメージ+56%。" }
+    ]
+  },
+  "source": ["限定光円錐ガチャ"]
+}
