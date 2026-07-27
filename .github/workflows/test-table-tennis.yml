@@ -1,0 +1,45 @@
+name: Test table tennis
+
+on:
+  pull_request:
+    paths:
+      - "table-tennis/**"
+      - ".github/workflows/test-table-tennis.yml"
+  push:
+    branches: [master]
+    paths:
+      - "table-tennis/**"
+      - ".github/workflows/test-table-tennis.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: table-tennis
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: table-tennis/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run checks
+        run: npm run check
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: table-tennis-playwright-report
+          path: table-tennis/playwright-report
+          retention-days: 7
