@@ -1,1215 +1,194 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content">
-<meta name="theme-color" content="#0d1218">
-<meta name="description" content="スマートフォンとPCで遊べる、軽快な3D卓球ゲーム">
-<meta name="application-name" content="卓球">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="卓球">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="format-detection" content="telephone=no">
-<meta name="color-scheme" content="dark">
-<link rel="manifest" href="./manifest.webmanifest">
-<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
-<title>卓球</title>
-<style>
-  :root{
-    --wall:#cfc7b6; --floor:#c9994f; --table:#1a5276; --line:#f3f6f8;
-    --ball:#f2711c; --led:#ffc24b; --panel:#0d1218; --ink:#e8eef3;
-    --fence:#17635c;
-  }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#0d1218;
-    overscroll-behavior:none;
-    font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
-    color:var(--ink);touch-action:none;user-select:none;-webkit-user-select:none;
-    -webkit-touch-callout:none}
-  #cv{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  <head>
+    <meta charset="utf-8">
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content"
+    >
+    <meta name="theme-color" content="#0d1218">
+    <meta
+      name="description"
+      content="スマートフォンとPCで遊べる、軽快な3D卓球ゲーム"
+    >
+    <meta name="application-name" content="卓球">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    >
+    <meta name="apple-mobile-web-app-title" content="卓球">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="color-scheme" content="dark">
+    <link rel="manifest" href="./manifest.webmanifest" vite-ignore>
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="192x192"
+      href="./icons/icon-192.png"
+      vite-ignore
+    >
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="./icons/apple-touch-icon.png"
+      vite-ignore
+    >
+    <title>卓球</title>
+  </head>
+  <body
+    data-phase="title"
+    data-server="P"
+    data-selected-serve-type="topspin"
+    data-service-worker="./sw.js"
+  >
+    <canvas id="cv"></canvas>
 
-  /* ---- scoreboard ---- */
-  #board{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;
-    transform:translateX(-50%);display:flex;align-items:stretch;gap:1px;
-    background:#05080b;border:1px solid #26313c;border-radius:10px;overflow:hidden;
-    box-shadow:0 6px 20px rgba(0,0,0,.45);pointer-events:none}
-  #board{border-color:#26313c}
-  .cell{background:var(--panel);padding:7px 12px 8px;text-align:center;min-width:66px}
-  .cell .lbl{font-size:10px;letter-spacing:.14em;color:#7d8b98;margin-bottom:2px}
-  .cell .num{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:27px;
-    line-height:1;font-weight:700;color:var(--led);letter-spacing:.04em;
-    text-shadow:0 0 12px rgba(255,194,75,.35)}
-  .cell.mid{min-width:auto;padding:7px 9px;display:flex;flex-direction:column;justify-content:center}
-  .cell.mid .lv{font-size:11px;color:#9fb0bd;letter-spacing:.08em}
-  .cell.mid .rally{font-size:10px;color:#63727f;margin-top:3px}
-  .serve{display:inline-block;width:6px;height:6px;border-radius:50%;
-    background:#33414d;margin-left:5px;vertical-align:middle}
-  .serve.on{background:var(--ball);box-shadow:0 0 8px var(--ball)}
-
-  /* ---- flash / hint ---- */
-  #flash{position:fixed;left:0;right:0;top:34%;text-align:center;font-size:26px;
-    font-weight:800;letter-spacing:.06em;pointer-events:none;opacity:0;
-    text-shadow:0 3px 14px rgba(0,0,0,.6)}
-  #hint{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
-    text-align:center;font-size:12.5px;color:#b9c6d1;pointer-events:none;
-    text-shadow:0 2px 8px rgba(0,0,0,.7);line-height:1.6;padding:0 20px}
-
-  #gear{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;
-    width:38px;height:38px;border-radius:10px;border:1px solid #2b3742;
-    background:rgba(13,18,24,.8);color:#9fb0bd;font-size:17px;display:grid;
-    place-items:center;backdrop-filter:blur(6px)}
-
-  /* ---- overlays ---- */
-  .ov{position:fixed;inset:0;display:none;flex-direction:column;justify-content:center;
-    align-items:center;padding:28px 22px;background:rgba(8,12,16,.86);
-    backdrop-filter:blur(10px);text-align:center;overflow-y:auto}
-  .ov.show{display:flex}
-  .eyebrow{font-size:10.5px;letter-spacing:.36em;color:#8b9aa6;margin-bottom:10px}
-  h1{font-size:52px;letter-spacing:.22em;font-weight:800;margin-bottom:4px;text-indent:.22em}
-  h2{font-size:30px;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
-  .sub{font-size:12.5px;color:#93a3b0;margin-bottom:26px;line-height:1.8}
-  .seclbl{font-size:11px;letter-spacing:.2em;color:#7d8b98;margin-bottom:10px}
-  .lvs{display:flex;gap:8px;margin-bottom:22px}
-  .lv{padding:12px 16px;border-radius:11px;border:1px solid #2b3742;background:#131b23;
-    color:#a9b8c4;min-width:88px}
-  .lv b{display:block;font-size:15px;letter-spacing:.08em;margin-bottom:3px;color:#dbe5ec}
-  .lv small{font-size:10px;color:#7d8b98;letter-spacing:.02em}
-  .lv.sel{border-color:var(--ball);background:#241a13;color:#fff}
-  .lv.sel b{color:var(--ball)}
-  .btn{padding:15px 46px;border-radius:12px;border:none;background:var(--ball);
-    color:#1a0f06;font-size:16px;font-weight:800;letter-spacing:.14em;
-    box-shadow:0 8px 24px rgba(242,113,28,.28)}
-  .btn.ghost{background:transparent;border:1px solid #35434f;color:#a9b8c4;
-    box-shadow:none;font-weight:600;padding:13px 30px;font-size:14px}
-  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;justify-content:center}
-  .guide{text-align:left;font-size:12px;color:#9fb0bd;line-height:2;margin:18px 0 4px;
-    border-top:1px solid #212c36;padding-top:16px;max-width:330px;width:100%}
-  .guide b{color:#dbe5ec;font-weight:700}
-  .guide .k{display:inline-block;min-width:104px;color:var(--led);font-size:11.5px;
-    letter-spacing:.04em}
-  .toggles{display:flex;gap:10px;margin-top:18px}
-  .tg{padding:9px 15px;border-radius:9px;border:1px solid #2b3742;background:#131b23;
-    color:#7d8b98;font-size:12px}
-  .tg.on{color:#dbe5ec;border-color:#4a5c6b}
-  button{cursor:pointer;touch-action:manipulation;-webkit-appearance:none;appearance:none;
-    font-family:inherit}
-  .final{font-family:ui-monospace,Menlo,monospace;font-size:44px;color:var(--led);
-    letter-spacing:.08em;margin:6px 0 18px;text-shadow:0 0 16px rgba(255,194,75,.3)}
-  @media (max-width:430px){
-    .cell{min-width:58px;padding:7px 9px 8px}
-    .cell .num{font-size:25px}
-    .cell.mid{padding-inline:7px}
-    h1{font-size:46px}
-    .lvs{gap:6px;width:100%}
-    .lv{min-width:0;flex:1;padding:11px 7px}
-  }
-  @media (max-height:650px) and (orientation:landscape){
-    #board{top:calc(env(safe-area-inset-top,0px) + 5px)}
-    #gear{top:calc(env(safe-area-inset-top,0px) + 7px)}
-    .ov{padding-block:18px}
-    .guide{line-height:1.65;margin-top:10px;padding-top:10px}
-  }
-</style>
-</head>
-<body>
-<canvas id="cv"></canvas>
-
-<div id="board">
-  <div class="cell"><div class="lbl">あいて<span id="sA" class="serve"></span></div><div class="num" id="scA">0</div></div>
-  <div class="cell mid"><div class="lv" id="lvName">中級</div><div class="rally" id="rally">RALLY 0</div></div>
-  <div class="cell"><div class="lbl"><span id="sP" class="serve"></span>あなた</div><div class="num" id="scP">0</div></div>
-</div>
-<button id="gear">⚙</button>
-<div id="flash"></div>
-<div id="hint"></div>
-
-<div class="ov show" id="title">
-  <div class="eyebrow">TABLE TENNIS</div>
-  <h1>卓球</h1>
-  <div class="sub">体育館の一台。11点先取、2点差で勝ち。</div>
-  <div class="seclbl">あいての強さ</div>
-  <div class="lvs" id="lvs">
-    <button class="lv" data-lv="easy"><b>初級</b><small>ラリーを楽しむ</small></button>
-    <button class="lv sel" data-lv="mid"><b>中級</b><small>打ち返してくる</small></button>
-    <button class="lv" data-lv="hard"><b>上級</b><small>逆を突かれる</small></button>
-  </div>
-  <button class="btn" id="start">はじめる</button>
-  <div class="guide">
-    <div><span class="k">よこにドラッグ</span>ラケットを動かす</div>
-    <div><span class="k">上にフリック</span>ドライブ／<b>スマッシュ</b></div>
-    <div><span class="k">下にフリック</span>ツッツキ（下回転）</div>
-    <div><span class="k">指を置くだけ</span>押し出し（ブロック）</div>
-    <div style="margin-top:8px;color:#7d8b98;font-size:11.5px;line-height:1.9">
-      浮いた球だけスマッシュが入ります。低い球を無理に叩くとネットにかかります。
+    <div id="board">
+      <div class="cell">
+        <div class="lbl">
+          あいて<span id="sA" class="serve"></span>
+        </div>
+        <div class="num" id="scA">0</div>
+      </div>
+      <div class="cell mid">
+        <div class="lv" id="lvName">中級</div>
+        <div class="rally" id="rally">RALLY 0</div>
+      </div>
+      <div class="cell">
+        <div class="lbl">
+          <span id="sP" class="serve"></span>あなた
+        </div>
+        <div class="num" id="scP">0</div>
+      </div>
     </div>
-  </div>
-  <div class="toggles">
-    <button class="tg on" id="tgS">🔈 音</button>
-    <button class="tg on" id="tgV">📳 振動</button>
-  </div>
-</div>
 
-<div class="ov" id="result">
-  <div class="eyebrow" id="rEye">GAME</div>
-  <h2 id="rTitle">勝ち</h2>
-  <div class="final" id="rScore">11 - 8</div>
-  <div class="sub" id="rSub"></div>
-  <button class="btn" id="again">もう一度</button>
-  <div class="row"><button class="btn ghost" id="back">難易度を変える</button></div>
-</div>
+    <button id="gear" type="button" aria-label="設定を開く">⚙</button>
+    <div id="flash" aria-live="polite"></div>
+    <div id="hint" aria-live="polite"></div>
 
-<div class="ov" id="pause">
-  <h2>一時停止</h2>
-  <div class="sub" id="pScore"></div>
-  <button class="btn" id="resume">つづける</button>
-  <div class="row">
-    <button class="tg" id="tgS2">🔈 音</button>
-    <button class="tg" id="tgV2">📳 振動</button>
-    <button class="btn ghost" id="quit">やめる</button>
-  </div>
-</div>
+    <section
+      id="serveControls"
+      class="serve-controls"
+      aria-label="サーブの種類"
+      hidden
+    >
+      <div class="serve-controls__label">サーブを選ぶ</div>
+      <div class="serve-controls__grid">
+        <button
+          class="serve-choice sel"
+          type="button"
+          data-serve-type="topspin"
+          aria-pressed="true"
+        >
+          上回転
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="backspin"
+          aria-pressed="false"
+        >
+          下回転
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="side-left"
+          aria-pressed="false"
+        >
+          横左
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="side-right"
+          aria-pressed="false"
+        >
+          横右
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="knuckle"
+          aria-pressed="false"
+        >
+          ナックル
+        </button>
+      </div>
+    </section>
 
-<script>
-"use strict";
-/* ===== 卓球の物理（単位: cm / 秒） ===== */
-const G = 980, DRAG = 0.11, MAG = 0.90, MAGS = 0.55;
-const HW = 76.25, HL = 137, NET_H = 15.25, NET_HW = 84, FLOOR = -76;
-const E_TABLE = 0.80;
+    <div class="ov show" id="title">
+      <div class="eyebrow">TABLE TENNIS</div>
+      <h1>卓球</h1>
+      <div class="sub">体育館の一台。11点先取、2点差で勝ち。</div>
+      <div class="seclbl">あいての強さ</div>
+      <div class="lvs" id="lvs">
+        <button class="lv" type="button" data-lv="easy">
+          <b>初級</b><small>ラリーを楽しむ</small>
+        </button>
+        <button class="lv sel" type="button" data-lv="mid">
+          <b>中級</b><small>打ち返してくる</small>
+        </button>
+        <button class="lv" type="button" data-lv="hard">
+          <b>上級</b><small>逆を突かれる</small>
+        </button>
+      </div>
+      <button class="btn" type="button" id="start">はじめる</button>
+      <div class="guide">
+        <div>
+          <span class="k">サーブ時</span>種類を選び、タップ／フリック
+        </div>
+        <div><span class="k">よこにドラッグ</span>ラケットを動かす</div>
+        <div>
+          <span class="k">上にフリック</span>ドライブ／<b>スマッシュ</b>
+        </div>
+        <div>
+          <span class="k">下にフリック</span>ツッツキ（下回転）
+        </div>
+        <div><span class="k">指を置くだけ</span>押し出し（ブロック）</div>
+        <div
+          style="
+            margin-top: 8px;
+            color: #7d8b98;
+            font-size: 11.5px;
+            line-height: 1.9;
+          "
+        >
+          浮いた球だけスマッシュが入ります。低い球を無理に叩くとネットにかかります。
+        </div>
+      </div>
+      <div class="toggles">
+        <button class="tg on" type="button" id="tgS">🔈 音</button>
+        <button class="tg on" type="button" id="tgV">📳 振動</button>
+      </div>
+    </div>
 
-function accel(b, o){
-  const hs = Math.hypot(b.vx, b.vz);
-  o.x = -DRAG*b.vx + MAGS*b.side*b.vz;
-  o.y = -G - DRAG*b.vy - MAG*b.spin*hs;
-  o.z = -DRAG*b.vz - MAGS*b.side*b.vx;
-  return o;
-}
-const _a = {x:0,y:0,z:0};
-function integrate(b, dt){
-  accel(b,_a);
-  b.vx += _a.x*dt; b.vy += _a.y*dt; b.vz += _a.z*dt;
-  b.x  += b.vx*dt; b.y += b.vy*dt; b.z += b.vz*dt;
-}
-function onTable(x,z){ return Math.abs(x) <= HW && Math.abs(z) <= HL; }
+    <div class="ov" id="result">
+      <div class="eyebrow" id="rEye">GAME</div>
+      <h2 id="rTitle">勝ち</h2>
+      <div class="final" id="rScore">11 - 8</div>
+      <div class="sub" id="rSub"></div>
+      <button class="btn" type="button" id="again">もう一度</button>
+      <div class="row">
+        <button class="btn ghost" type="button" id="back">
+          難易度を変える
+        </button>
+      </div>
+    </div>
 
-/* 台でのバウンド。上回転は前に伸び、下回転は低く失速する。 */
-function tableBounce(b){
-  b.y = 0;
-  b.vy = -b.vy * E_TABLE * (1 + 0.22*b.spin);
-  if (b.vy < 22) b.vy = 22;
-  b.vz *= (1 + 0.30*b.spin);
-  b.vx += b.side * 55;
-  b.spin *= 0.55;
-  b.side *= 0.60;
-}
+    <div class="ov" id="pause">
+      <h2>一時停止</h2>
+      <div class="sub" id="pScore"></div>
+      <button class="btn" type="button" id="resume">つづける</button>
+      <div class="row">
+        <button class="tg" type="button" id="tgS2">🔈 音</button>
+        <button class="tg" type="button" id="tgV2">📳 振動</button>
+        <button class="btn ghost" type="button" id="quit">やめる</button>
+      </div>
+    </div>
 
-/* 打球点から着地点までを予測。ネットに当たれば net:true */
-function simLand(b0, maxT){
-  const b = {x:b0.x,y:b0.y,z:b0.z,vx:b0.vx,vy:b0.vy,vz:b0.vz,spin:b0.spin||0,side:b0.side||0};
-  const dt = 1/240, T = maxT || 3;
-  let px=b.x, py=b.y, pz=b.z;
-  for (let t=0; t<T; t+=dt){
-    px=b.x; py=b.y; pz=b.z;
-    integrate(b, dt);
-    if ((pz<0) !== (b.z<0)){
-      const k = (0-pz)/(b.z-pz);
-      const yy = py + (b.y-py)*k, xx = px + (b.x-px)*k;
-      if (yy < NET_H && Math.abs(xx) < NET_HW) return {net:true, x:xx, z:0, t:t};
-    }
-    if (py > 0 && b.y <= 0){
-      const k = py/(py-b.y);
-      return {net:false, x:px+(b.x-px)*k, z:pz+(b.z-pz)*k, t:t};
-    }
-  }
-  return {net:false, x:b.x, z:b.z, timeout:true, t:T};
-}
-
-function launch(speed, elev, azim){
-  const h = speed*Math.cos(elev);
-  return { vx:h*Math.sin(azim), vy:speed*Math.sin(elev), vz:h*Math.cos(azim) };
-}
-
-/* 目標地点に落ちる打ち出し角を二分探索で求める */
-function solveAngle(from, tx, tz, speed, spin, side, hiLimit){
-  const dir  = Math.sign(tz - from.z) || 1;
-  const azim = Math.atan2(tx - from.x, tz - from.z);
-  const P = (tz - from.z) * dir;
-  let lo = -0.40, hi = (hiLimit === undefined ? 0.85 : hiLimit);
-  for (let i=0; i<11; i++){
-    const e = (lo+hi)/2;
-    const v = launch(speed, e, azim);
-    const r = simLand({x:from.x,y:from.y,z:from.z,vx:v.vx,vy:v.vy,vz:v.vz,spin:spin,side:side});
-    const p = (r.z - from.z)*dir;
-    if (p < P) lo = e; else hi = e;
-  }
-  return { elev:(lo+hi)/2, azim:azim };
-}
-/* 角度を固定して速度を求める（ロブ用） */
-function solveSpeed(from, tx, tz, elev, spin, side){
-  const dir  = Math.sign(tz - from.z) || 1;
-  const azim = Math.atan2(tx - from.x, tz - from.z);
-  const P = (tz - from.z) * dir;
-  let lo = 250, hi = 1300;
-  for (let i=0; i<11; i++){
-    const s = (lo+hi)/2;
-    const v = launch(s, elev, azim);
-    const r = simLand({x:from.x,y:from.y,z:from.z,vx:v.vx,vy:v.vy,vz:v.vz,spin:spin,side:side});
-    const p = (r.z - from.z)*dir;
-    if (p < P) lo = s; else hi = s;
-  }
-  return { speed:(lo+hi)/2, azim:azim };
-}
-
-/* サーブ: 自陣にワンバウンドさせ、2バウンド目が相手コートに落ちる速度を探す */
-function serveTry(from, aimX, spin, side, dir, s, dist){
-  const t1z = from.z + dir*(dist||82);
-  const a = solveAngle(from, aimX*0.35, t1z, s, spin, side, 0.7);
-  const v = launch(s, a.elev, a.azim);
-  const b = {x:from.x,y:from.y,z:from.z,vx:v.vx,vy:v.vy,vz:v.vz,spin:spin,side:side};
-  const r1 = simLand(b);
-  let z2, ok = false;
-  if (r1.net || !onTable(r1.x, r1.z) || r1.z*dir >= 0) z2 = r1.z;
-  else {
-    const st = simState(b, r1.t); tableBounce(st);
-    const r2 = simLand(st);
-    z2 = r2.z;
-    ok = !r2.net && onTable(r2.x, r2.z) && r2.z*dir > 0;
-  }
-  return { elev:a.elev, azim:a.azim, speed:s, z2:z2, ok:ok };
-}
-function solveServe(from, aimX, spin, side, dir){
-  const goal = dir*70;
-  let best = null, bestScore = 1e9;
-  for (let d=0; d<2; d++){
-    const dist = d ? 60 : 82;
-    for (let i=0; i<10; i++){
-      const s = 300 + i*66;
-      const r = serveTry(from, aimX, spin, side, dir, s, dist);
-      const good = r.ok ? 0 : 1000;
-      const sc = good + Math.abs(r.z2 - goal);
-      if (sc < bestScore){ bestScore = sc; best = r; }
-    }
-  }
-  return best;
-}
-/* 指定時間だけ進めた状態を返す */
-function simState(b0, T){
-  const b = {x:b0.x,y:b0.y,z:b0.z,vx:b0.vx,vy:b0.vy,vz:b0.vz,spin:b0.spin||0,side:b0.side||0};
-  const dt = 1/240;
-  for (let t=0; t<T; t+=dt) integrate(b, dt);
-  b.y = 0;
-  return b;
-}
-/* ネットを越えるまで角度を少し起こす（きれいに捉えた球は入りやすく） */
-function ensureNetClear(from, elev, azim, speed, spin, side, margin){
-  for (let i=0; i<6; i++){
-    const v = launch(speed, elev, azim);
-    const r = simLand({x:from.x,y:from.y,z:from.z,vx:v.vx,vy:v.vy,vz:v.vz,spin:spin,side:side});
-    if (!r.net) return elev;
-    elev += 0.022 + (margin||0);
-  }
-  return elev;
-}
-
-/* ===== 定数 ===== */
-const PZ = -152, AZ = 152;          // ラケットの奥行き位置
-const P_REACH = 31, P_SPEED = 385;  // 手の届く範囲 / ラケット最高速度
-const BALL_R = 2;
-
-const SHOT = {
-  DRIVE:{ sp:[810,950],  spin:0.95, dep:100, err:0.017, lab:'ドライブ',   pw:1.0 },
-  SMASH:{ sp:[1360,1520],spin:0.42, dep:108, err:0.012, lab:'スマッシュ！',pw:1.6 },
-  PUSH: { sp:[430,510],  spin:-0.2, dep:88,  err:0.015, lab:'押し出し',   pw:0.6 },
-  CHOP: { sp:[395,470],  spin:-0.92,dep:96,  err:0.017, lab:'ツッツキ',   pw:0.6 },
-  LOB:  { sp:[0,0],      spin:0.35, dep:118, err:0.030, lab:'ロブ',       pw:0.8 }
-};
-
-const LEVELS = {
-  easy:{ name:'初級', delay:0.30, speed:108, perr:17, refine:0.34, smash:0.00,
-         chop:0.05, miss:0.11, spread:0.32, reach:30, depth:84,  serveErr:0.045, lob:0.5 },
-  mid: { name:'中級', delay:0.18, speed:152, perr:12, refine:0.18, smash:0.40,
-         chop:0.25, miss:0.08, spread:0.72, reach:30, depth:95,  serveErr:0.032, lob:0.7 },
-  hard:{ name:'上級', delay:0.07, speed:222, perr:4,  refine:0.05, smash:0.85,
-         chop:0.35, miss:0.02, spread:1.00, reach:33, depth:100, serveErr:0.016, lob:0.9 }
-};
-
-/* ===== 状態 ===== */
-const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
-let W=0, H=0, DPR=1;
-const cam = { x:0, y:190, z:-330, f:0, cx:0, cy:0 };
-
-const G_ = {
-  phase:'title',      // title | serve | rally | point | over
-  level:'mid', L:LEVELS.mid,
-  scP:0, scA:0, server:'P', servedCount:0,
-  rally:0, pointTimer:0, msg:'', winner:'',
-  sound:true, vibe:true, played:0
-};
-
-const ball = { x:0,y:0,z:0, vx:0,vy:0,vz:0, spin:0, side:0, live:false,
-               hitter:'P', bounces:0, bSide:0, serveStage:0 };
-const trail = [];
-let mark = null;                       // 着地予測マーカー
-let smashable = false, smashCheck = 0;
-
-let simT = 0;
-const P = { x:0, tx:0, z:PZ, swing:0, swingType:0 };
-const A = { x:0, tx:0, z:AZ, swing:0, react:-1, nextRefine:0, plan:null };
-
-/* ===== 入力 ===== */
-const IN = { down:false, x:0, y:0, samples:[], flick:null, tDown:0 };
-function nowS(){ return performance.now()/1000; }
-
-function pushSample(x,y){
-  const t = nowS();
-  IN.samples.push({x,y,t});
-  while (IN.samples.length>1 && t - IN.samples[0].t > 0.11) IN.samples.shift();
-  if (IN.samples.length >= 2){
-    const a = IN.samples[0], b = IN.samples[IN.samples.length-1];
-    const dt = b.t - a.t;
-    if (dt > 0.008){
-      const vx = (b.x-a.x)/dt/H, vy = (b.y-a.y)/dt/H;   // 画面高さ/秒
-      const sp = Math.hypot(vx,vy);
-      if (sp > 1.25) IN.flick = { vx, vy, sp, t };
-    }
-  }
-}
-function currentFlick(){
-  if (!IN.flick) return null;
-  return (nowS() - IN.flick.t < 0.16) ? IN.flick : null;
-}
-let activeTouchId = null;
-function pos(e){
-  if (e.touches && e.touches.length > 0) {
-    if (activeTouchId !== null) {
-      for (let i = 0; i < e.touches.length; i++) {
-        if (e.touches[i].identifier === activeTouchId) {
-          return { x: e.touches[i].clientX, y: e.touches[i].clientY };
-        }
-      }
-    }
-    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  }
-  return { x: e.clientX, y: e.clientY };
-}
-function onDown(e){
-  e.preventDefault(); audioInit();
-  if (e.changedTouches) activeTouchId = e.changedTouches[0].identifier;
-  const p = pos(e);
-  IN.down = true; IN.x = p.x; IN.y = p.y; IN.samples.length = 0; IN.flick = null;
-  IN.tDown = nowS(); pushSample(p.x, p.y);
-  P.tx = touchToX(p.x);
-}
-function onMove(e){
-  e.preventDefault();
-  if (!IN.down) return;
-  const p = pos(e);
-  IN.x = p.x; IN.y = p.y; pushSample(p.x, p.y);
-  P.tx = touchToX(p.x);
-  if (G_.phase === 'serve') tryServePlayer();
-}
-function onUp(e){
-  e.preventDefault();
-  if (e.changedTouches && activeTouchId !== null) {
-    let found = false;
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === activeTouchId) found = true;
-    }
-    if (!found) return;
-  }
-  activeTouchId = null;
-  if (G_.phase === 'serve' && IN.down && nowS()-IN.tDown < 0.25 && !IN.flick) tapServe();
-  IN.down = false;
-}
-function touchToX(px){
-  return Math.max(-104, Math.min(104, (px/W - 0.5) * 210));
-}
-cv.addEventListener('touchstart', onDown, {passive:false});
-cv.addEventListener('touchmove',  onMove, {passive:false});
-cv.addEventListener('touchend',   onUp,   {passive:false});
-cv.addEventListener('mousedown',  onDown);
-window.addEventListener('mousemove', e=>{ if(IN.down) onMove(e); });
-window.addEventListener('mouseup', onUp);
-document.addEventListener('gesturestart', e=>e.preventDefault(), {passive:false});
-cv.addEventListener('touchcancel', onUp, {passive:false});
-document.addEventListener('contextmenu', e=>e.preventDefault());
-
-/* ===== 音 ===== */
-let AC = null;
-function audioInit(){
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AC && AudioCtx){
-    try { AC = new AudioCtx(); } catch (_) { AC = null; }
-  }
-  if (AC && AC.state === 'suspended') AC.resume().catch(()=>{});
-}
-
-function blip(freq, dur, type, gain, noise){
-  if (!G_.sound || !AC) return;
-  const t = AC.currentTime, g = AC.createGain();
-  g.gain.setValueAtTime(gain, t);
-  g.gain.exponentialRampToValueAtTime(0.0008, t+dur);
-  g.connect(AC.destination);
-  if (noise){
-    const n = AC.createBufferSource(), len = Math.ceil(AC.sampleRate*dur);
-    const buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
-    for (let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
-    n.buffer = buf;
-    const f = AC.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq; f.Q.value=1.4;
-    n.connect(f); f.connect(g); n.start(t); n.stop(t+dur);
-  } else {
-    const o = AC.createOscillator(); o.type = type||'triangle';
-    o.frequency.setValueAtTime(freq, t);
-    o.frequency.exponentialRampToValueAtTime(freq*0.6, t+dur);
-    o.connect(g); o.start(t); o.stop(t+dur);
-  }
-}
-function buzz(ms){
-  if (!G_.vibe || !navigator.vibrate) return;
-  try { navigator.vibrate(ms); } catch (_) {}
-}
-const sfx = {
-  hit(p){ blip(900+p*700, 0.05, null, 0.30, true); blip(320+p*260, 0.05,'square',0.08); buzz(10); },
-  bounce(){ blip(1500, 0.035, null, 0.16, true); },
-  net(){ blip(180, 0.13, 'sine', 0.20); buzz(24); },
-  win(){ blip(660,0.09,'square',0.14); setTimeout(()=>blip(990,0.16,'square',0.14),90); buzz(34); },
-  lose(){ blip(300,0.20,'sine',0.15); buzz([18,60,18]); }
-};
-
-/* ===== 画面サイズ ===== */
-function resize(){
-  const coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-  DPR = Math.min(coarsePointer ? 2 : 3, window.devicePixelRatio||1);
-  W = cv.clientWidth; H = cv.clientHeight;
-  const nextW = Math.round(W*DPR), nextH = Math.round(H*DPR);
-  if (cv.width !== nextW || cv.height !== nextH) {
-    cv.width = nextW; cv.height = nextH;
-  }
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-  cam.f  = Math.max(300, Math.min(1.30*W, 0.80*H));
-  cam.cx = W/2;
-  const near = cam.f/(-HL - cam.z);
-  cam.cy = H*0.735 - cam.y*near;
-}
-window.addEventListener('resize', resize);
-if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
-window.addEventListener('orientationchange', ()=>{
-  resize();
-  setTimeout(resize,250);
-});
-
-/* ===== 投影 ===== */
-function pr(x,y,z){
-  const dz = Math.max(24, z - cam.z), s = cam.f/dz;
-  return { x: cam.cx + (x-cam.x)*s, y: cam.cy - (y-cam.y)*s, s:s };
-}
-function quad(a,b,c,d, fill){
-  ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
-  ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath();
-  ctx.fillStyle = fill; ctx.fill();
-}
-
-/* ===== 描画: 体育館 ===== */
-function drawScene(){
-  const hz = cam.cy;                        // 地平線
-  // 壁
-  let g = ctx.createLinearGradient(0,0,0,hz);
-  g.addColorStop(0,'#8d8778'); g.addColorStop(0.55,'#bdb5a4'); g.addColorStop(1,'#d6cfbe');
-  ctx.fillStyle = g; ctx.fillRect(0,0,W,hz+1);
-  // 天井の照明
-  ctx.fillStyle = 'rgba(255,246,220,.22)';
-  for (let i=0;i<4;i++){ const x = W*(0.14+i*0.24); ctx.fillRect(x-W*0.055, hz*0.10, W*0.11, 5); }
-  // 壁の腰板
-  ctx.fillStyle = '#7e786a'; ctx.fillRect(0, hz-Math.max(10,H*0.028), W, Math.max(10,H*0.028));
-  ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(0, hz-Math.max(10,H*0.028), W, 2);
-
-  // 床
-  g = ctx.createLinearGradient(0,hz,0,H);
-  g.addColorStop(0,'#a67c3f'); g.addColorStop(0.45,'#c4934c'); g.addColorStop(1,'#d9a960');
-  ctx.fillStyle = g; ctx.fillRect(0,hz,W,H-hz);
-  // 木目（遠近線）
-  ctx.strokeStyle = 'rgba(120,80,32,.20)'; ctx.lineWidth = 1;
-  for (let i=-12;i<=12;i++){
-    const x = i*46;
-    const a = pr(x, FLOOR, -300), b = pr(x, FLOOR, 1500);
-    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-  }
-  // 床の横継ぎ目
-  ctx.strokeStyle = 'rgba(120,80,32,.13)';
-  for (let z=-260; z<1400; z+=180){
-    const a = pr(-900, FLOOR, z), b = pr(900, FLOOR, z);
-    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-  }
-  // コートライン（体育館らしさ）
-  ctx.strokeStyle = 'rgba(226,232,238,.34)'; ctx.lineWidth = 2;
-  [[-330],[330]].forEach(([x])=>{
-    const a = pr(x, FLOOR, -320), b = pr(x, FLOOR, 900);
-    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-  });
-  // 照明の落ち込み
-  const lp = ctx.createRadialGradient(W/2, hz+(H-hz)*0.45, 10, W/2, hz+(H-hz)*0.45, W*0.95);
-  lp.addColorStop(0,'rgba(255,247,225,.16)'); lp.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle = lp; ctx.fillRect(0,hz,W,H-hz);
-
-  drawFence(620); drawFence(-560);
-}
-function drawFence(z){
-  const base = pr(0, FLOOR, z), top = pr(0, FLOOR+75, z);
-  const l = pr(-460, FLOOR, z), r = pr(460, FLOOR, z);
-  const h = base.y - top.y;
-  ctx.fillStyle = '#17635c';
-  ctx.fillRect(l.x, top.y, r.x-l.x, h);
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
-  ctx.fillRect(l.x, base.y-h*0.16, r.x-l.x, h*0.16);
-  ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1.5;
-  ctx.strokeRect(l.x, top.y, r.x-l.x, h);
-  ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = 1;
-  const n = 9;
-  for (let i=1;i<n;i++){ const x = l.x + (r.x-l.x)*i/n;
-    ctx.beginPath(); ctx.moveTo(x, top.y); ctx.lineTo(x, base.y); ctx.stroke(); }
-}
-
-function drawTable(){
-  const c = [pr(-HW,0,-HL), pr(HW,0,-HL), pr(HW,0,HL), pr(-HW,0,HL)];
-  // 脚
-  ctx.fillStyle = '#1c2733';
-  [[-HW+16,-HL+18],[HW-16,-HL+18],[-HW+16,HL-18],[HW-16,HL-18]].forEach(([x,z])=>{
-    const t = pr(x,-4,z), b = pr(x,FLOOR,z), w = Math.max(3, 7*t.s);
-    ctx.fillRect(t.x-w/2, t.y, w, b.y-t.y);
-  });
-  // 天板の厚み（手前・両サイド）
-  const t0 = pr(-HW,-5,-HL), t1 = pr(HW,-5,-HL);
-  quad(c[0], c[1], t1, t0, '#10334a');
-  quad(c[3], c[0], t0, pr(-HW,-5,HL), '#0e2c40');
-  quad(c[1], c[2], pr(HW,-5,HL), t1, '#0e2c40');
-  // 天板
-  const g = ctx.createLinearGradient(0, c[3].y, 0, c[0].y);
-  g.addColorStop(0,'#123f5c'); g.addColorStop(0.5,'#1a5276'); g.addColorStop(1,'#1f608a');
-  quad(c[0],c[1],c[2],c[3], g);
-  // 照りかえし
-  const sh = ctx.createLinearGradient(0, c[3].y, 0, c[0].y);
-  sh.addColorStop(0,'rgba(255,255,255,.10)'); sh.addColorStop(0.35,'rgba(255,255,255,.02)');
-  sh.addColorStop(1,'rgba(0,0,0,.10)');
-  quad(c[0],c[1],c[2],c[3], sh);
-  // 白線
-  const LW = 2.0;
-  band(-HW,-HW+LW,-HL,HL); band(HW-LW,HW,-HL,HL);
-  band(-HW,HW,-HL,-HL+LW); band(-HW,HW,HL-LW,HL);
-  ctx.globalAlpha = 0.45; band(-0.15,0.15,-HL,HL); ctx.globalAlpha = 1;
-  drawNet();
-}
-function band(x0,x1,z0,z1){
-  quad(pr(x0,0.2,z0), pr(x1,0.2,z0), pr(x1,0.2,z1), pr(x0,0.2,z1), '#f3f6f8');
-}
-function drawNet(){
-  const a = pr(-NET_HW,0,0), b = pr(NET_HW,0,0);
-  const at = pr(-NET_HW,NET_H,0), bt = pr(NET_HW,NET_H,0);
-  quad(at,bt,b,a, 'rgba(232,238,244,.30)');
-  ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1;
-  for (let i=1;i<24;i++){
-    const x = -NET_HW + (2*NET_HW)*i/24;
-    const p0 = pr(x,0,0), p1 = pr(x,NET_H,0);
-    ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.stroke();
-  }
-  quad(at, bt, pr(NET_HW,NET_H+1.6,0), pr(-NET_HW,NET_H+1.6,0), '#ffffff');
-  ctx.fillStyle = '#e8eef4';
-  [[-NET_HW],[NET_HW]].forEach(([x])=>{
-    const p0 = pr(x,0,0), p1 = pr(x,NET_H+2,0), w = Math.max(2, 2.4*p0.s);
-    ctx.fillRect(p0.x-w/2, p1.y, w, p0.y-p1.y);
-  });
-}
-
-function drawOpponent(){
-  const s = pr(A.x, FLOOR, A.z+16).s;
-  const hip = pr(A.x, FLOOR+46, A.z+16), head = pr(A.x, FLOOR+72, A.z+16);
-  const feet = pr(A.x, FLOOR, A.z+16);
-  // 影
-  ctx.fillStyle = 'rgba(0,0,0,.22)';
-  ctx.beginPath(); ctx.ellipse(feet.x, feet.y, 22*s, 7*s, 0,0,7); ctx.fill();
-  // 脚
-  ctx.strokeStyle = '#1b2836'; ctx.lineWidth = Math.max(3, 8.5*s); ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(hip.x-7*s, hip.y); ctx.lineTo(feet.x-11*s, feet.y); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(hip.x+7*s, hip.y); ctx.lineTo(feet.x+11*s, feet.y); ctx.stroke();
-  // 胴
-  const tw = 21*s, th = hip.y - head.y - 9*s;
-  ctx.fillStyle = '#e9edf1';
-  roundRect(hip.x-tw/2, head.y+9*s, tw, th, 6*s); ctx.fill();
-  ctx.fillStyle = '#c0392b';
-  ctx.fillRect(hip.x-tw/2, head.y+9*s, tw, Math.max(2,4*s));
-  // 頭
-  ctx.fillStyle = '#2b3a49';
-  ctx.beginPath(); ctx.arc(head.x, head.y+3*s, 7.5*s, 0, 7); ctx.fill();
-  // 腕とラケット
-  const sw = A.swing>0 ? Math.sin(A.swing*Math.PI)*1 : 0;
-  const rx = A.x + (12 + sw*16), ry = FLOOR + 44 + sw*10;
-  const hand = pr(rx, ry, A.z+10);
-  ctx.strokeStyle = '#e9edf1'; ctx.lineWidth = Math.max(2.5, 6*s);
-  ctx.beginPath(); ctx.moveTo(hip.x+tw*0.4, head.y+16*s); ctx.lineTo(hand.x, hand.y); ctx.stroke();
-  paddle(hand, s, '#b03a2e', A.swing>0);
-}
-function roundRect(x,y,w,h,r){
-  r = Math.min(r, w/2, h/2);
-  ctx.beginPath();
-  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
-  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
-  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
-}
-function paddle(p, s, col, glow){
-  const r = Math.max(6, 9.6*s*1.25);
-  ctx.save();
-  ctx.beginPath(); ctx.ellipse(p.x, p.y, r, r*0.94, 0, 0, 7);
-  ctx.fillStyle = col; ctx.fill();
-  ctx.lineWidth = Math.max(1.5, r*0.14); ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(p.x, p.y-r*0.22, r*0.62, r*0.4, 0, 0, 7);
-  ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fill();
-  ctx.restore();
-}
-function drawPlayerPaddle(){
-  const sw = P.swing>0 ? Math.sin(P.swing*Math.PI) : 0;
-  const yy = 16 + (P.swingType===1 ? sw*26 : P.swingType===-1 ? -sw*14 : sw*8);
-  const p = pr(P.x, yy, P.z + sw*8);
-  const r = Math.max(9, 9.6*p.s*1.35);
-  // 前腕
-  const g = ctx.createLinearGradient(p.x, p.y, p.x, H);
-  g.addColorStop(0,'#2c3e50'); g.addColorStop(1,'rgba(20,28,38,0)');
-  ctx.strokeStyle = g; ctx.lineWidth = r*0.55; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(p.x, p.y+r*0.7); ctx.lineTo(p.x*0.7+W*0.15, H+20); ctx.stroke();
-  if (smashable){
-    ctx.beginPath(); ctx.arc(p.x, p.y, r*1.55, 0, 7);
-    ctx.strokeStyle = 'rgba(255,194,75,.85)'; ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.beginPath(); ctx.arc(p.x, p.y, r*1.95, 0, 7);
-    ctx.strokeStyle = 'rgba(255,194,75,.22)'; ctx.lineWidth = 5; ctx.stroke();
-  }
-  paddle(p, p.s, '#cb4335', P.swing>0);
-}
-
-function drawBall(){
-  if (!ball.live && G_.phase!=='serve') return;
-  // 影
-  const overTable = onTable(ball.x, ball.z);
-  const sy = overTable ? 0.4 : FLOOR;
-  const sp = pr(ball.x, sy, ball.z);
-  const hgt = Math.max(0, ball.y - sy);
-  const al = Math.max(0.05, 0.30 - hgt/420);
-  ctx.fillStyle = `rgba(0,0,0,${al})`;
-  ctx.beginPath(); ctx.ellipse(sp.x, sp.y, (5+hgt*0.035)*sp.s, (2.4+hgt*0.016)*sp.s, 0,0,7); ctx.fill();
-  // 残像
-  for (let i=0;i<trail.length;i++){
-    const t = trail[i], k = (i+1)/trail.length;
-    const q = pr(t.x,t.y,t.z);
-    ctx.beginPath(); ctx.arc(q.x, q.y, BALL_R*3.1*q.s*k*0.8, 0, 7);
-    ctx.fillStyle = `rgba(242,113,28,${0.13*k})`; ctx.fill();
-  }
-  const p = pr(ball.x, ball.y, ball.z);
-  const r = Math.max(3.6, BALL_R*3.1*p.s);
-  const g = ctx.createRadialGradient(p.x-r*0.35, p.y-r*0.4, r*0.1, p.x, p.y, r);
-  g.addColorStop(0,'#ffd9a8'); g.addColorStop(0.5,'#f2711c'); g.addColorStop(1,'#c8560f');
-  ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle = g; ctx.fill();
-  // 回転の目印
-  const ang = (performance.now()/1000)*ball.spin*10;
-  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = Math.max(1, r*0.16);
-  ctx.beginPath(); ctx.arc(p.x, p.y, r*0.55, ang, ang+1.5); ctx.stroke();
-}
-function drawMark(){
-  if (!mark) return;
-  const p = pr(mark.x, 0.5, mark.z);
-  const k = Math.max(0, Math.min(1, mark.t));
-  const r = (7 + 16*k) * p.s;
-  ctx.strokeStyle = `rgba(255,194,75,${0.25+0.5*(1-k)})`;
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.ellipse(p.x, p.y, r, r*0.42, 0,0,7); ctx.stroke();
-}
-
-/* 受け手が球を捉える奥行きを、実際の弾道から決める（短い球には前に出る） */
-function clampPlane(z, dir){
-  return dir<0 ? Math.max(-178, Math.min(-62, z)) : Math.min(178, Math.max(62, z));
-}
-function contactPlane(recv){
-  const dir = recv==='P' ? -1 : 1;
-  const side = dir;
-  const b = {x:ball.x,y:ball.y,z:ball.z,vx:ball.vx,vy:ball.vy,vz:ball.vz,spin:ball.spin,side:ball.side};
-  const dt = 1/240;
-  let py=b.y, pz=b.z, bounced=false;
-  for (let t=0; t<3; t+=dt){
-    py=b.y; pz=b.z;
-    integrate(b, dt);
-    if (py>0 && b.y<=0){
-      if (!onTable(b.x,b.z)) break;
-      if (!bounced){
-        b.y=0;
-        if (Math.sign(b.z) === side) bounced = true;   // 受け手コートのバウンドのみ数える
-        tableBounce(b); continue;
-      }
-      return clampPlane(pz, dir);
-    }
-    if (bounced && b.vy<0 && b.y<=22) return clampPlane(b.z, dir);
-    if (b.y < FLOOR) break;
-  }
-  return dir<0 ? PZ : AZ;
-}
-
-/* ===== 打つ ===== */
-function makeShot(who, type, aimX, depth, contactQ, extraErr){
-  const dir = (who==='P') ? 1 : -1;
-  const s = SHOT[type];
-  const from = { x: ball.x, y: Math.max(ball.y, -46), z: ball.z };
-  const tz = dir * Math.max(24, Math.min(HL-14, depth));
-  const tx = Math.max(-HW+7, Math.min(HW-7, aimX));
-  const side = (Math.random()-0.5) * 0.25;
-  let spin = s.spin, elev, azim, speed;
-
-  if (type === 'LOB'){
-    const r = solveSpeed(from, tx, tz, 1.02, spin, side);
-    speed = r.speed; azim = r.azim; elev = 1.02;
-  } else {
-    speed = s.sp[0] + Math.random()*(s.sp[1]-s.sp[0]);
-    if (type==='SMASH') speed *= 0.86 + 0.14*Math.min(1, Math.max(0,(ball.y-20)/30));
-    const r = solveAngle(from, tx, tz, speed, spin, side);
-    elev = r.elev; azim = r.azim;
-    if (!extraErr && contactQ > 0.30) elev = ensureNetClear(from, elev, azim, speed, spin, side, 0);
-  }
-  const err = (s.err + (1-contactQ)*0.055 + (extraErr||0));
-  elev += (Math.random()*2-1) * err;
-  azim += (Math.random()*2-1) * err * 1.5;
-  speed *= 1 + (Math.random()*2-1) * (err*1.6);
-
-  const v = launch(speed, elev, azim);
-  ball.vx = v.vx; ball.vy = v.vy; ball.vz = v.vz;
-  ball.x = from.x; ball.y = from.y; ball.z = from.z;
-  ball.spin = spin; ball.side = side;
-  ball.hitter = who; ball.bounces = 0; ball.live = true; ball.serveStage = 0;
-  trail.length = 0;
-  sfx.hit(Math.min(1, speed/1500));
-  if (who==='P'){ P.swing = 1; P.swingType = (type==='CHOP')?-1:(type==='SMASH'?1:0); G_.rally++; }
-  else A.swing = 1;
-  flash(s.lab, who==='P' ? (type==='SMASH'?'#ffc24b':'#e8eef3') : '#9fb0bd', type==='SMASH'?1:0.7);
-  if (who==='P'){ A.z = contactPlane('A'); planAI(); }
-  else { P.z = contactPlane('P'); planMark(); }
-}
-
-/* ===== サーブ ===== */
-let serveTimer = 0;
-let serveGeneration = 0;
-function cancelServeTimer(){
-  serveGeneration++;
-  if (serveTimer){ clearTimeout(serveTimer); serveTimer = 0; }
-}
-function startServe(){
-  cancelServeTimer();
-  G_.phase = 'serve';
-  ball.live = false; trail.length = 0; mark = null; smashable = false;
-  const isP = G_.server==='P';
-  ball.x = isP ? P.x*0.5 : A.x*0.5;
-  ball.z = isP ? PZ+6 : AZ-6;
-  P.z = PZ; A.z = AZ;
-  ball.y = 26; ball.vx = ball.vy = ball.vz = 0; ball.spin = 0; ball.side = 0;
-  G_.rally = 0;
-  hint(isP ? '上下にフリックしてサーブ（下＝下回転）' : '');
-  if (!isP){
-    const generation = serveGeneration;
-    serveTimer = setTimeout(()=>{
-      serveTimer = 0;
-      if (generation === serveGeneration && G_.phase === 'serve' && G_.server === 'A' && !paused) aiServe();
-    }, 700);
-  }
-  updateHUD();
-}
-function doServe(who, aimX, spinKind, errK){
-  const dir = who==='P' ? 1 : -1;
-  const spin = spinKind==='down' ? -0.75 : spinKind==='up' ? 0.55 : 0.0;
-  const side = spinKind==='side' ? (Math.random()<0.5?-0.5:0.5) : (Math.random()-0.5)*0.2;
-  const from = { x: ball.x, y: 24, z: ball.z };
-  const r = solveServe(from, aimX, spin, side, dir);
-  let elev = r.elev + (Math.random()*2-1)*errK;
-  const azim = r.azim + (Math.random()*2-1)*errK*1.4;
-  const speed = r.speed * (1 + (Math.random()*2-1)*errK*1.2);
-  const v = launch(speed, elev, azim);
-  ball.x=from.x; ball.y=from.y; ball.z=from.z;
-  ball.vx=v.vx; ball.vy=v.vy; ball.vz=v.vz; ball.spin=spin; ball.side=side;
-  ball.hitter = who; ball.bounces = 0; ball.serveStage = 1; ball.live = true;
-  trail.length = 0;
-  G_.phase = 'rally'; G_.rally = 1;
-  sfx.hit(0.35);
-  flash(spinKind==='down'?'下回転サーブ':spinKind==='up'?'上回転サーブ':'ナックルサーブ','#9fb0bd',0.6);
-  if (who==='P'){ P.swing=1; P.swingType=0; A.z = contactPlane('A'); planAI(); }
-  else { A.swing=1; P.z = contactPlane('P'); planMark(); }
-  hint('');
-}
-function tryServePlayer(){
-  const f = currentFlick();
-  if (!f) return;
-  const kind = f.vy < -0.5*f.sp ? 'up' : f.vy > 0.5*f.sp ? 'down' : 'side';
-  IN.flick = null;
-  doServe('P', P.x*0.6 + f.vx*40, kind, 0.012);
-}
-function tapServe(){ doServe('P', P.x*0.6, 'up', 0.014); }
-function aiServe(){
-  const L = G_.L;
-  const kinds = L===LEVELS.easy ? ['up','up','side'] : ['down','up','side','down'];
-  const kind = kinds[Math.floor(Math.random()*kinds.length)];
-  doServe('A', (Math.random()*2-1)*HW*0.7*L.spread, kind, L.serveErr);
-}
-
-/* ===== AI ===== */
-function planAI(){
-  const L = G_.L;
-  A.react = simT + L.delay;
-  A.nextRefine = simT + L.refine;
-  A.plan = null;
-  refineAI(L.perr);
-}
-function refineAI(err){
-  const b = {x:ball.x,y:ball.y,z:ball.z,vx:ball.vx,vy:ball.vy,vz:ball.vz,spin:ball.spin,side:ball.side};
-  const r = predictAt(b, A.z, 1);
-  if (r) A.plan = { x: r.x + (Math.random()*2-1)*err, y: r.y };
-}
-/* 指定の z 面を通過する位置を予測（バウンド込み） */
-function predictAt(b0, targetZ, dir){
-  const b = {x:b0.x,y:b0.y,z:b0.z,vx:b0.vx,vy:b0.vy,vz:b0.vz,spin:b0.spin,side:b0.side};
-  const dt = 1/240;
-  let py=b.y, pz=b.z, px=b.x;
-  for (let t=0;t<2.6;t+=dt){
-    py=b.y; pz=b.z; px=b.x;
-    integrate(b, dt);
-    if (py>0 && b.y<=0){
-      if (onTable(b.x,b.z)){ b.y=0; tableBounce(b); }
-      else return null;
-    }
-    if (dir<0 ? (b.z<=targetZ) : (b.z>=targetZ)){
-      const k = (targetZ-pz)/(b.z-pz);
-      return { x: px+(b.x-px)*k, y: py+(b.y-py)*k, t:t };
-    }
-    if (b.y < FLOOR) return null;
-  }
-  return null;
-}
-function planMark(){
-  const b = {x:ball.x,y:ball.y,z:ball.z,vx:ball.vx,vy:ball.vy,vz:ball.vz,spin:ball.spin,side:ball.side};
-  const r = simLand(b);
-  mark = (r && !r.net && r.z < 0 && onTable(r.x,r.z)) ? {x:r.x, z:r.z, t:1} : null;
-}
-function aiThink(dt){
-  const L = G_.L, t = simT;
-  if (A.plan && t > A.react){
-    if (t > A.nextRefine){ A.nextRefine = t + L.refine; refineAI(L.perr*0.45); }
-    const d = A.plan.x - A.x, mv = L.speed*dt;
-    A.x += Math.abs(d) < mv ? d : Math.sign(d)*mv;
-  }
-  A.x = Math.max(-104, Math.min(104, A.x));
-}
-function aiHit(){
-  const L = G_.L;
-  if (Math.abs(ball.x - A.x) > L.reach || ball.y < -42 || ball.y > 105) return false;
-  const q = 1 - Math.abs(ball.x - A.x)/L.reach;
-  let type;
-  if (ball.y < -12) type = 'LOB';
-  else if (ball.y > 24 && Math.random() < L.smash) type = 'SMASH';
-  else if (ball.spin < -0.35 && ball.y < 14) type = (Math.random() < L.chop) ? 'CHOP' : 'PUSH';
-  else if (Math.random() < L.chop*0.5) type = 'CHOP';
-  else type = 'DRIVE';
-  // 狙い所
-  let aim;
-  if (L === LEVELS.hard) aim = -Math.sign(P.x||1) * HW*0.72 * (0.6+0.4*Math.random());
-  else aim = (Math.random()*2-1) * HW*0.8 * L.spread;
-  const depth = L.depth * (0.82 + 0.30*Math.random());
-  const blunder = Math.random() < L.miss ? 0.075 : 0;
-  makeShot('A', type, aim, depth, Math.max(0.25,q), blunder);
-  return true;
-}
-
-/* ===== 得点 ===== */
-function point(who, reason){
-  if (G_.phase === 'point' || G_.phase === 'over') return;
-  if (who === 'P'){ G_.scP++; sfx.win(); } else { G_.scA++; sfx.lose(); }
-  ball.live = false; mark = null; smashable = false;
-  G_.phase = 'point'; G_.pointTimer = 1.25;
-  flash(reason, who==='P' ? '#7ee0a8' : '#ff8a6b', 1.1);
-  G_.servedCount++;
-  const deuce = G_.scP>=10 && G_.scA>=10;
-  if (G_.servedCount >= (deuce ? 1 : 2)){ G_.servedCount = 0; G_.server = G_.server==='P'?'A':'P'; }
-  updateHUD();
-  const hi = Math.max(G_.scP, G_.scA), lo = Math.min(G_.scP, G_.scA);
-  if (hi >= 11 && hi - lo >= 2){ G_.phase = 'over'; setTimeout(gameOver, 1000); }
-}
-function gameOver(){
-  cancelServeTimer();
-  const win = G_.scP > G_.scA;
-  document.getElementById('rEye').textContent = win ? 'GAME · WIN' : 'GAME · LOSE';
-  document.getElementById('rTitle').textContent = win ? '勝ち' : '負け';
-  document.getElementById('rScore').textContent = G_.scP + ' - ' + G_.scA;
-  document.getElementById('rSub').textContent =
-    (win ? 'あいて：' : '') + G_.L.name + (win ? ' を破りました' : ' に届かず');
-  document.getElementById('result').classList.add('show');
-  hint('');
-}
-
-/* ===== 物理更新 ===== */
-function physics(dt){
-  if (!ball.live) return;
-  const px=ball.x, py=ball.y, pz=ball.z;
-  integrate(ball, dt);
-
-  // 残像
-  trail.push({x:ball.x,y:ball.y,z:ball.z});
-  if (trail.length > 9) trail.shift();
-
-  // ネット
-  if ((pz<0) !== (ball.z<0)){
-    const k = (0-pz)/(ball.z-pz);
-    const yy = py+(ball.y-py)*k, xx = px+(ball.x-px)*k;
-    if (yy < NET_H && Math.abs(xx) < NET_HW){
-      ball.z = 0; ball.vz *= -0.22; ball.vy *= 0.35;
-      ball.vx *= 0.4; ball.spin *= 0.3; ball.side *= 0.3;
-      sfx.net();
-      point(ball.hitter==='P'?'A':'P', 'ネット');
-      return;
-    }
-  }
-
-  // 台のバウンド / 台外
-  if (py > 0 && ball.y <= 0){
-    if (onTable(ball.x, ball.z)){
-      tableBounce(ball); sfx.bounce();
-      judgeBounce();
-    } else {
-      point(ball.bounces>=1 ? ball.hitter : (ball.hitter==='P'?'A':'P'),
-            ball.bounces>=1 ? '返せず' : 'アウト');
-      return;
-    }
-  }
-  if (ball.y < FLOOR){
-    point(ball.bounces>=1 ? ball.hitter : (ball.hitter==='P'?'A':'P'),
-          ball.bounces>=1 ? '返せず' : 'アウト');
-    return;
-  }
-
-  // ラケット面の通過判定
-  if (pz > P.z && ball.z <= P.z) playerContact();
-  if (pz < A.z && ball.z >= A.z) opponentContact();
-
-  // マーカーの縮小
-  if (mark){
-    const d = Math.abs(ball.z - mark.z);
-    mark.t = Math.max(0, Math.min(1, d/180));
-  }
-  // スマッシュ可能サイン（毎フレームは重いので間引く）
-  if (ball.hitter === 'A' && ball.bounces >= 1 && ball.vz < 0){
-    if (simT > smashCheck){
-      smashCheck = simT + 0.08;
-      const r = predictAt(ball, P.z, -1);
-      smashable = !!(r && r.y > 26 && Math.abs(r.x - P.x) < P_REACH+8);
-    }
-  } else { smashable = false; smashCheck = 0; }
-}
-
-function judgeBounce(){
-  const side = ball.z < 0 ? 'P' : 'A';
-  if (ball.serveStage === 1){                    // サーブ1バウンド目は自陣
-    if (side !== ball.hitter){ point(ball.hitter==='P'?'A':'P','サーブフォルト'); return; }
-    ball.serveStage = 2; return;
-  }
-  if (ball.serveStage === 2){                    // 2バウンド目は相手コート
-    if (side === ball.hitter){ point(ball.hitter==='P'?'A':'P','サーブフォルト'); return; }
-    ball.serveStage = 0; ball.bounces = 1; return;
-  }
-  if (ball.bounces === 0){
-    if (side === ball.hitter){ point(ball.hitter==='P'?'A':'P','自陣に落下'); return; }
-    ball.bounces = 1;
-  } else {
-    point(ball.hitter, '返せず');
-  }
-}
-
-function playerContact(){
-  if (ball.hitter === 'P') return;
-  if (ball.bounces < 1) return;                          // ノーバウンド＝見送り
-  if (Math.abs(ball.x - P.x) > P_REACH) return;
-  if (ball.y < -46 || ball.y > 108) return;
-  const f = currentFlick();
-  let type;
-  if (!f){
-    type = 'PUSH';                                       // 何もしなければ押し出し
-  } else {
-    const up = -f.vy, down = f.vy;
-    if (up > 0.42*f.sp){
-      if (ball.y < -8) type = 'LOB';
-      else if (f.sp > 3.0 && ball.y > 26) type = 'SMASH';
-      else type = 'DRIVE';
-    } else if (down > 0.42*f.sp){
-      type = 'CHOP';
-    } else {
-      type = 'PUSH';
-    }
-    IN.flick = null;
-  }
-  const q = 1 - Math.abs(ball.x - P.x)/P_REACH;
-  const off = (ball.x - P.x)/P_REACH;
-  const fh = f ? f.vx : 0;
-  let aim = -off*HW*0.85 + fh*46;
-  let depth = SHOT[type].dep * (f ? (0.85 + Math.min(0.45, f.sp*0.09)) : 1);
-  makeShot('P', type, aim, depth, q, 0);
-  mark = null;
-}
-function opponentContact(){
-  if (ball.hitter === 'A') return;
-  if (ball.bounces < 1) return;
-  if (!aiHit()) return;
-}
-
-/* ===== HUD ===== */
-const el = id=>document.getElementById(id);
-function updateHUD(){
-  el('scP').textContent = G_.scP; el('scA').textContent = G_.scA;
-  el('lvName').textContent = G_.L.name;
-  el('rally').textContent = 'RALLY ' + G_.rally;
-  el('sP').className = 'serve' + (G_.server==='P'?' on':'');
-  el('sA').className = 'serve' + (G_.server==='A'?' on':'');
-}
-let flashT = 0;
-function flash(text, color, dur){
-  const f = el('flash');
-  f.textContent = text; f.style.color = color || '#e8eef3';
-  flashT = dur || 0.8; f.style.opacity = 1;
-}
-function hint(t){ el('hint').innerHTML = t; }
-
-/* ===== ループ ===== */
-let last = 0, acc = 0;
-const STEP = 1/240;
-function loop(ts){
-  requestAnimationFrame(loop);
-  const t = ts/1000;
-  let dt = last ? Math.min(0.05, t-last) : 0;
-  last = t;
-  if (G_.phase !== 'title' && !paused){
-    acc += dt;
-    let n = 0;
-    while (acc >= STEP && n < 12){ tick(STEP); acc -= STEP; n++; }
-    if (n >= 12) acc = 0;
-  }
-  // 減衰
-  if (flashT > 0){ flashT -= dt; el('flash').style.opacity = Math.max(0, Math.min(1, flashT*2.2)); }
-  P.swing = Math.max(0, P.swing - dt*6);
-  A.swing = Math.max(0, A.swing - dt*6);
-  render();
-}
-function tick(dt){
-  simT += dt;
-  // ラケット移動
-  const d = P.tx - P.x, mv = P_SPEED*dt;
-  P.x += Math.abs(d) < mv ? d : Math.sign(d)*mv;
-  aiThink(dt);
-  physics(dt);
-  if (G_.phase === 'point'){
-    G_.pointTimer -= dt;
-    if (G_.pointTimer <= 0) startServe();
-  }
-  if (G_.phase === 'rally') el('rally').textContent = 'RALLY ' + G_.rally;
-}
-function render(){
-  ctx.clearRect(0,0,W,H);
-  drawScene();
-  drawOpponent();
-  drawTable();
-  drawMark();
-  drawBall();
-  drawPlayerPaddle();
-}
-
-/* ===== 画面遷移 ===== */
-let paused = false;
-function newGame(){
-  cancelServeTimer();
-  paused = false; last = 0; acc = 0;
-  IN.down = false; IN.flick = null; IN.samples.length = 0; activeTouchId = null;
-  el('pause').classList.remove('show');
-  G_.scP = 0; G_.scA = 0; G_.server = Math.random()<0.5?'P':'A'; G_.servedCount = 0;
-  G_.phase = 'serve'; P.x = 0; P.tx = 0; A.x = 0; A.plan = null;
-  el('title').classList.remove('show');
-  el('result').classList.remove('show');
-  G_.played++;
-  updateHUD(); startServe();
-  if (G_.played === 1)
-    hint('よこにドラッグでラケット移動<br>上フリック＝ドライブ / 下フリック＝ツッツキ / 指を置くだけ＝押し出し');
-}
-function bindTap(el, fn) {
-  if (!el) return;
-  let touchHandled = false;
-  el.addEventListener('touchstart', (e) => {
-    touchHandled = true;
-    fn(e);
-    setTimeout(() => { touchHandled = false; }, 400);
-  }, {passive: true});
-  el.addEventListener('click', (e) => {
-    if (touchHandled) return;
-    fn(e);
-  });
-}
-
-document.querySelectorAll('#lvs .lv').forEach(b=>{
-  bindTap(b, ()=>{
-    document.querySelectorAll('#lvs .lv').forEach(x=>x.classList.remove('sel'));
-    b.classList.add('sel');
-    G_.level = b.dataset.lv; G_.L = LEVELS[G_.level];
-    updateHUD();
-  });
-});
-bindTap(el('start'), ()=>{ audioInit(); newGame(); });
-bindTap(el('again'), ()=>{ audioInit(); newGame(); });
-bindTap(el('back'), ()=>{
-  cancelServeTimer();
-  el('result').classList.remove('show'); el('title').classList.add('show');
-  G_.phase = 'title'; ball.live = false; hint('');
-});
-bindTap(el('gear'), ()=>{
-  if (!['serve','rally','point'].includes(G_.phase) || paused) return;
-  paused = true; el('pause').classList.add('show');
-  el('pScore').textContent = `${G_.L.name} ／ ${G_.scP} - ${G_.scA}`;
-  syncToggles();
-});
-bindTap(el('resume'), ()=>{
-  paused = false; last = 0; acc = 0; el('pause').classList.remove('show');
-  if (G_.phase === 'serve' && G_.server === 'A') startServe();
-});
-bindTap(el('quit'), ()=>{
-  cancelServeTimer();
-  paused = false; el('pause').classList.remove('show');
-  el('title').classList.add('show'); G_.phase='title'; ball.live=false; hint('');
-});
-function syncToggles(){
-  el('tgS').classList.toggle('on', G_.sound); el('tgV').classList.toggle('on', G_.vibe);
-  el('tgS2').classList.toggle('on', G_.sound); el('tgV2').classList.toggle('on', G_.vibe);
-}
-['tgS','tgS2'].forEach(id=>bindTap(el(id), ()=>{ G_.sound=!G_.sound; audioInit(); syncToggles(); }));
-['tgV','tgV2'].forEach(id=>bindTap(el(id), ()=>{ G_.vibe=!G_.vibe; buzz(20); syncToggles(); }));
-document.addEventListener('visibilitychange', ()=>{
-  if (document.hidden && ['serve','rally','point'].includes(G_.phase)){
-    cancelServeTimer();
-    paused = true;
-    el('pause').classList.add('show');
-    el('pScore').textContent = `${G_.L.name} ／ ${G_.scP} - ${G_.scA}`;
-    syncToggles();
-  }
-});
-window.addEventListener('pageshow', ()=>{
-  last = 0; acc = 0; resize();
-});
-window.addEventListener('pagehide', ()=>{
-  cancelServeTimer();
-  IN.down = false;
-  activeTouchId = null;
-});
-
-resize(); updateHUD(); syncToggles(); requestAnimationFrame(loop);
-</script>
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js").catch(() => {});
-    });
-  }
-</script>
-</body>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
 </html>

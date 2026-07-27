@@ -1,0 +1,1074 @@
+import {
+  AZ,
+  FIXED_STEP,
+  FLOOR,
+  HL,
+  HW,
+  LEVELS,
+  NET_H,
+  NET_HW,
+  P_REACH,
+  P_SPEED,
+  PZ,
+  SERVE_PROFILES,
+  SHOTS,
+} from "./config.ts";
+import { Feedback } from "./feedback.ts";
+import { InputController } from "./input.ts";
+import {
+  ensureNetClear,
+  integrate,
+  launch,
+  onTable,
+  predictAt,
+  simLand,
+  solveAngle,
+  solveServe,
+  solveSpeed,
+  tableBounce,
+} from "./physics.ts";
+import { Renderer } from "./render.ts";
+import {
+  chooseWeightedServe,
+  isGameOver,
+  rotateServerAfterPoint,
+} from "./rules.ts";
+import type {
+  AiState,
+  BallState,
+  BallVector,
+  Flick,
+  GameState,
+  LevelId,
+  Mark,
+  PaddleState,
+  RenderScene,
+  ServeSolution,
+  ServeType,
+  ShotId,
+  Side,
+} from "./types.ts";
+import { Ui } from "./ui.ts";
+
+export class Game {
+  public readonly state: GameState = {
+    phase: "title",
+    paused: false,
+    level: "mid",
+    levelConfig: LEVELS.mid,
+    scP: 0,
+    scA: 0,
+    server: "P",
+    servedCount: 0,
+    rally: 0,
+    pointTimer: 0,
+    sound: true,
+    vibe: true,
+    played: 0,
+    selectedServeType: "topspin",
+  };
+
+  private readonly ball: BallState = {
+    x: 0,
+    y: 0,
+    z: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    spin: 0,
+    side: 0,
+    live: false,
+    hitter: "P",
+    bounces: 0,
+    bSide: 0,
+    serveStage: 0,
+  };
+
+  private readonly player: PaddleState = {
+    x: 0,
+    tx: 0,
+    z: PZ,
+    swing: 0,
+    swingType: 0,
+  };
+
+  private readonly opponent: AiState = {
+    x: 0,
+    tx: 0,
+    z: AZ,
+    swing: 0,
+    swingType: 0,
+    react: -1,
+    nextRefine: 0,
+    plan: null,
+  };
+
+  private readonly trail: Pick<BallVector, "x" | "y" | "z">[] = [];
+  private mark: Mark | null = null;
+  private smashable = false;
+  private smashCheck = 0;
+  private simulationTime = 0;
+  private serveTimer = 0;
+  private serveGeneration = 0;
+  private input: InputController | null = null;
+  private renderer: Renderer | null = null;
+  private lastFrame = 0;
+  private accumulator = 0;
+  private loopStarted = false;
+
+  public constructor(
+    private readonly ui: Ui,
+    private readonly feedback: Feedback,
+    private readonly random: () => number = Math.random,
+  ) {}
+
+  public attach(input: InputController, renderer: Renderer): void {
+    this.input = input;
+    this.renderer = renderer;
+  }
+
+  public bindUi(): void {
+    this.ui.bind({
+      start: () => {
+        this.feedback.initializeAudio();
+        this.newGame();
+      },
+      playAgain: () => {
+        this.feedback.initializeAudio();
+        this.newGame();
+      },
+      backToTitle: () => {
+        this.backToTitle();
+      },
+      pause: () => {
+        this.pause();
+      },
+      resume: () => {
+        this.resume();
+      },
+      quit: () => {
+        this.backToTitle();
+      },
+      selectLevel: (level) => {
+        this.selectLevel(level);
+      },
+      selectServe: (serveType) => {
+        this.selectServe(serveType);
+      },
+      toggleSound: () => {
+        this.state.sound = !this.state.sound;
+        this.feedback.initializeAudio();
+        this.ui.syncToggles(this.state);
+      },
+      toggleVibration: () => {
+        this.state.vibe = !this.state.vibe;
+        this.feedback.buzz(20);
+        this.ui.syncToggles(this.state);
+      },
+    });
+  }
+
+  public start(): void {
+    this.ui.updateHud(this.state);
+    this.ui.updateLevelSelection(this.state.level);
+    this.ui.updateServeControls(this.state);
+    this.ui.syncToggles(this.state);
+    if (!this.loopStarted) {
+      this.loopStarted = true;
+      requestAnimationFrame(this.loop);
+    }
+  }
+
+  public getRenderScene(): RenderScene {
+    return {
+      game: this.state,
+      ball: this.ball,
+      player: this.player,
+      opponent: this.opponent,
+      trail: this.trail,
+      mark: this.mark,
+      smashable: this.smashable,
+    };
+  }
+
+  public updatePlayerTarget(clientX: number): void {
+    const width = Math.max(1, this.renderer?.getViewport().width ?? 1);
+    this.player.tx = Math.max(
+      -104,
+      Math.min(104, (clientX / width - 0.5) * 210),
+    );
+  }
+
+  public tryPlayerServe(flick: Flick | null): boolean {
+    if (
+      this.state.phase !== "serve" ||
+      this.state.server !== "P" ||
+      this.state.paused ||
+      this.ball.live
+    ) {
+      return false;
+    }
+    const aim =
+      this.player.x * 0.6 + (flick ? flick.vx * 40 : 0);
+    return this.doServe(
+      "P",
+      aim,
+      this.state.selectedServeType,
+      flick ? 0.012 : 0.014,
+    );
+  }
+
+  public handleVisibilityChange(): void {
+    if (
+      document.hidden &&
+      ["serve", "rally", "point"].includes(this.state.phase)
+    ) {
+      this.pause();
+    }
+  }
+
+  public handlePageShow(): void {
+    this.lastFrame = 0;
+    this.accumulator = 0;
+  }
+
+  public handlePageHide(): void {
+    this.cancelServeTimer();
+    this.input?.reset();
+  }
+
+  private readonly loop = (timestamp: number): void => {
+    requestAnimationFrame(this.loop);
+    const seconds = timestamp / 1000;
+    const dt = this.lastFrame
+      ? Math.min(0.05, seconds - this.lastFrame)
+      : 0;
+    this.lastFrame = seconds;
+
+    if (this.state.phase !== "title" && !this.state.paused) {
+      this.accumulator += dt;
+      let steps = 0;
+      while (this.accumulator >= FIXED_STEP && steps < 12) {
+        this.tick(FIXED_STEP);
+        this.accumulator -= FIXED_STEP;
+        steps += 1;
+      }
+      if (steps >= 12) {
+        this.accumulator = 0;
+      }
+    }
+
+    this.ui.tickFlash(dt);
+    this.player.swing = Math.max(0, this.player.swing - dt * 6);
+    this.opponent.swing = Math.max(0, this.opponent.swing - dt * 6);
+    this.renderer?.render();
+  };
+
+  private tick(dt: number): void {
+    this.simulationTime += dt;
+    const playerDistance = this.player.tx - this.player.x;
+    const playerMove = P_SPEED * dt;
+    this.player.x +=
+      Math.abs(playerDistance) < playerMove
+        ? playerDistance
+        : Math.sign(playerDistance) * playerMove;
+
+    this.aiThink(dt);
+    this.updatePhysics(dt);
+
+    if (this.state.phase === "point") {
+      this.state.pointTimer -= dt;
+      if (this.state.pointTimer <= 0) {
+        this.startServe();
+      }
+    }
+    if (this.state.phase === "rally") {
+      this.ui.updateHud(this.state);
+    }
+  }
+
+  private newGame(): void {
+    this.cancelServeTimer();
+    this.state.paused = false;
+    this.lastFrame = 0;
+    this.accumulator = 0;
+    this.input?.reset();
+    this.state.scP = 0;
+    this.state.scA = 0;
+    this.state.server = this.random() < 0.5 ? "P" : "A";
+    this.state.servedCount = 0;
+    this.state.phase = "serve";
+    this.player.x = 0;
+    this.player.tx = 0;
+    this.opponent.x = 0;
+    this.opponent.plan = null;
+    this.state.played += 1;
+    this.ui.showGame();
+    this.ui.updateHud(this.state);
+    this.startServe();
+  }
+
+  private selectLevel(level: LevelId): void {
+    this.state.level = level;
+    this.state.levelConfig = LEVELS[level];
+    this.ui.updateLevelSelection(level);
+    this.ui.updateHud(this.state);
+  }
+
+  private selectServe(serveType: ServeType): void {
+    if (
+      this.state.phase !== "serve" ||
+      this.state.server !== "P" ||
+      this.state.paused
+    ) {
+      return;
+    }
+    this.state.selectedServeType = serveType;
+    this.ui.updateServeControls(this.state);
+    this.ui.updateHud(this.state);
+  }
+
+  private pause(): void {
+    if (
+      !["serve", "rally", "point"].includes(this.state.phase) ||
+      this.state.paused
+    ) {
+      return;
+    }
+    this.cancelServeTimer();
+    this.state.paused = true;
+    this.input?.reset();
+    this.ui.showPause(this.state);
+    this.ui.updateServeControls(this.state);
+    this.ui.syncToggles(this.state);
+  }
+
+  private resume(): void {
+    if (!this.state.paused) {
+      return;
+    }
+    this.state.paused = false;
+    this.lastFrame = 0;
+    this.accumulator = 0;
+    this.ui.hidePause();
+    this.ui.updateServeControls(this.state);
+    if (this.state.phase === "serve" && this.state.server === "A") {
+      this.startServe();
+    }
+  }
+
+  private backToTitle(): void {
+    this.cancelServeTimer();
+    this.state.paused = false;
+    this.state.phase = "title";
+    this.ball.live = false;
+    this.input?.reset();
+    this.ui.showTitle();
+    this.ui.hint([]);
+    this.ui.updateHud(this.state);
+    this.ui.updateServeControls(this.state);
+  }
+
+  private cancelServeTimer(): void {
+    this.serveGeneration += 1;
+    if (this.serveTimer) {
+      window.clearTimeout(this.serveTimer);
+      this.serveTimer = 0;
+    }
+  }
+
+  private startServe(): void {
+    this.cancelServeTimer();
+    this.state.phase = "serve";
+    this.ball.live = false;
+    this.trail.length = 0;
+    this.mark = null;
+    this.smashable = false;
+    const playerServes = this.state.server === "P";
+    this.ball.x = playerServes
+      ? this.player.x * 0.5
+      : this.opponent.x * 0.5;
+    this.ball.z = playerServes ? PZ + 6 : AZ - 6;
+    this.player.z = PZ;
+    this.opponent.z = AZ;
+    this.ball.y = 26;
+    this.ball.vx = 0;
+    this.ball.vy = 0;
+    this.ball.vz = 0;
+    this.ball.spin = 0;
+    this.ball.side = 0;
+    this.state.rally = 0;
+    this.ui.hint(
+      playerServes
+        ? [
+            "サーブを選び、台上を左右にフリック",
+            "またはタップしてサーブ",
+          ]
+        : [],
+    );
+    this.ui.updateHud(this.state);
+    this.ui.updateServeControls(this.state);
+
+    if (!playerServes) {
+      this.scheduleAiServe();
+    }
+  }
+
+  private scheduleAiServe(): void {
+    const generation = this.serveGeneration;
+    this.serveTimer = window.setTimeout(() => {
+      this.serveTimer = 0;
+      if (
+        generation === this.serveGeneration &&
+        this.state.phase === "serve" &&
+        this.state.server === "A" &&
+        !this.state.paused
+      ) {
+        this.aiServe();
+      }
+    }, 700);
+  }
+
+  private aiServe(): void {
+    const serveType = chooseWeightedServe(this.state.level, this.random);
+    const aim =
+      (this.random() * 2 - 1) *
+      HW *
+      0.7 *
+      this.state.levelConfig.spread;
+    if (
+      !this.doServe(
+        "A",
+        aim,
+        serveType,
+        this.state.levelConfig.serveErr,
+      )
+    ) {
+      this.scheduleAiServe();
+    }
+  }
+
+  private findServeSolution(
+    who: Side,
+    aimX: number,
+    serveType: ServeType,
+  ): {
+    solution: ServeSolution;
+    serveType: ServeType;
+    spin: number;
+    side: number;
+  } | null {
+    const direction = who === "P" ? 1 : -1;
+    const from = { x: this.ball.x, y: 24, z: this.ball.z };
+    const profile = SERVE_PROFILES[serveType];
+    const side = profile.screenCurve;
+    let solution = solveServe(
+      from,
+      aimX,
+      profile.spin,
+      side,
+      direction,
+    );
+    if (!solution.ok && aimX !== 0) {
+      solution = solveServe(
+        from,
+        0,
+        profile.spin,
+        side,
+        direction,
+      );
+    }
+    if (solution.ok) {
+      return {
+        solution,
+        serveType,
+        spin: profile.spin,
+        side,
+      };
+    }
+
+    if (who === "A" && serveType !== "knuckle") {
+      const fallback = SERVE_PROFILES.knuckle;
+      solution = solveServe(from, 0, fallback.spin, 0, direction);
+      if (solution.ok) {
+        return {
+          solution,
+          serveType: "knuckle",
+          spin: fallback.spin,
+          side: 0,
+        };
+      }
+    }
+    return null;
+  }
+
+  private doServe(
+    who: Side,
+    aimX: number,
+    serveType: ServeType,
+    error: number,
+  ): boolean {
+    const resolved = this.findServeSolution(who, aimX, serveType);
+    if (!resolved) {
+      if (who === "P") {
+        this.ui.flash(
+          "サーブを作れませんでした",
+          "#ff8a6b",
+          1,
+        );
+        this.ui.hint(["もう一度操作してください"]);
+      }
+      return false;
+    }
+
+    const from = { x: this.ball.x, y: 24, z: this.ball.z };
+    const elevation =
+      resolved.solution.elev + (this.random() * 2 - 1) * error;
+    const azimuth =
+      resolved.solution.azim +
+      (this.random() * 2 - 1) * error * 1.4;
+    const speed =
+      resolved.solution.speed *
+      (1 + (this.random() * 2 - 1) * error * 1.2);
+    const velocity = launch(speed, elevation, azimuth);
+
+    Object.assign(this.ball, from, velocity);
+    this.ball.spin = resolved.spin;
+    this.ball.side = resolved.side;
+    this.ball.hitter = who;
+    this.ball.bounces = 0;
+    this.ball.serveStage = 1;
+    this.ball.live = true;
+    this.trail.length = 0;
+    this.state.phase = "rally";
+    this.state.rally = 1;
+    this.feedback.hit(0.35);
+    this.ui.flash(
+      `${SERVE_PROFILES[resolved.serveType].label}サーブ`,
+      "#9fb0bd",
+      0.6,
+    );
+    if (who === "P") {
+      this.player.swing = 1;
+      this.player.swingType = 0;
+      this.opponent.z = this.contactPlane("A");
+      this.planAi();
+    } else {
+      this.opponent.swing = 1;
+      this.player.z = this.contactPlane("P");
+      this.planMark();
+    }
+    this.ui.hint([]);
+    this.ui.updateHud(this.state);
+    this.ui.updateServeControls(this.state);
+    return true;
+  }
+
+  private contactPlane(receiver: Side): number {
+    const direction = receiver === "P" ? -1 : 1;
+    const ball: BallVector = {
+      x: this.ball.x,
+      y: this.ball.y,
+      z: this.ball.z,
+      vx: this.ball.vx,
+      vy: this.ball.vy,
+      vz: this.ball.vz,
+      spin: this.ball.spin,
+      side: this.ball.side,
+    };
+    const dt = 1 / 240;
+    let previousY: number;
+    let previousZ: number;
+    let bounced = false;
+
+    for (let time = 0; time < 3; time += dt) {
+      previousY = ball.y;
+      previousZ = ball.z;
+      integrate(ball, dt);
+      if (previousY > 0 && ball.y <= 0) {
+        if (!onTable(ball.x, ball.z)) {
+          break;
+        }
+        if (!bounced) {
+          ball.y = 0;
+          if (Math.sign(ball.z) === direction) {
+            bounced = true;
+          }
+          tableBounce(ball);
+          continue;
+        }
+        return this.clampPlane(previousZ, direction);
+      }
+      if (bounced && ball.vy < 0 && ball.y <= 22) {
+        return this.clampPlane(ball.z, direction);
+      }
+      if (ball.y < FLOOR) {
+        break;
+      }
+    }
+    return direction < 0 ? PZ : AZ;
+  }
+
+  private clampPlane(z: number, direction: number): number {
+    return direction < 0
+      ? Math.max(-178, Math.min(-62, z))
+      : Math.min(178, Math.max(62, z));
+  }
+
+  private makeShot(
+    who: Side,
+    type: ShotId,
+    aimX: number,
+    depth: number,
+    contactQuality: number,
+    extraError: number,
+  ): void {
+    const direction = who === "P" ? 1 : -1;
+    const shot = SHOTS[type];
+    const from = {
+      x: this.ball.x,
+      y: Math.max(this.ball.y, -46),
+      z: this.ball.z,
+    };
+    const targetZ =
+      direction * Math.max(24, Math.min(HL - 14, depth));
+    const targetX = Math.max(-HW + 7, Math.min(HW - 7, aimX));
+    const side = (this.random() - 0.5) * 0.25;
+    const spin = shot.spin;
+    let elevation: number;
+    let azimuth: number;
+    let speed: number;
+
+    if (type === "LOB") {
+      const result = solveSpeed(
+        from,
+        targetX,
+        targetZ,
+        1.02,
+        spin,
+        side,
+      );
+      speed = result.speed;
+      azimuth = result.azim;
+      elevation = 1.02;
+    } else {
+      speed =
+        shot.sp[0] + this.random() * (shot.sp[1] - shot.sp[0]);
+      if (type === "SMASH") {
+        speed *=
+          0.86 +
+          0.14 * Math.min(1, Math.max(0, (this.ball.y - 20) / 30));
+      }
+      const result = solveAngle(
+        from,
+        targetX,
+        targetZ,
+        speed,
+        spin,
+        side,
+      );
+      elevation = result.elev;
+      azimuth = result.azim;
+      if (!extraError && contactQuality > 0.3) {
+        elevation = ensureNetClear(
+          from,
+          elevation,
+          azimuth,
+          speed,
+          spin,
+          side,
+        );
+      }
+    }
+
+    const error =
+      shot.err + (1 - contactQuality) * 0.055 + extraError;
+    elevation += (this.random() * 2 - 1) * error;
+    azimuth += (this.random() * 2 - 1) * error * 1.5;
+    speed *= 1 + (this.random() * 2 - 1) * error * 1.6;
+    const velocity = launch(speed, elevation, azimuth);
+
+    Object.assign(this.ball, from, velocity);
+    this.ball.spin = spin;
+    this.ball.side = side;
+    this.ball.hitter = who;
+    this.ball.bounces = 0;
+    this.ball.live = true;
+    this.ball.serveStage = 0;
+    this.trail.length = 0;
+    this.feedback.hit(Math.min(1, speed / 1500));
+
+    if (who === "P") {
+      this.player.swing = 1;
+      this.player.swingType =
+        type === "CHOP" ? -1 : type === "SMASH" ? 1 : 0;
+      this.state.rally += 1;
+    } else {
+      this.opponent.swing = 1;
+    }
+
+    this.ui.flash(
+      shot.lab,
+      who === "P"
+        ? type === "SMASH"
+          ? "#ffc24b"
+          : "#e8eef3"
+        : "#9fb0bd",
+      type === "SMASH" ? 1 : 0.7,
+    );
+    if (who === "P") {
+      this.opponent.z = this.contactPlane("A");
+      this.planAi();
+    } else {
+      this.player.z = this.contactPlane("P");
+      this.planMark();
+    }
+  }
+
+  private planAi(): void {
+    const level = this.state.levelConfig;
+    this.opponent.react = this.simulationTime + level.delay;
+    this.opponent.nextRefine = this.simulationTime + level.refine;
+    this.opponent.plan = null;
+    this.refineAi(level.perr);
+  }
+
+  private refineAi(error: number): void {
+    const prediction = predictAt(
+      this.ball,
+      this.opponent.z,
+      1,
+      FLOOR,
+    );
+    if (prediction) {
+      this.opponent.plan = {
+        x: prediction.x + (this.random() * 2 - 1) * error,
+        y: prediction.y,
+      };
+    }
+  }
+
+  private planMark(): void {
+    const result = simLand(this.ball);
+    this.mark =
+      result &&
+      !result.net &&
+      result.z < 0 &&
+      onTable(result.x, result.z)
+        ? { x: result.x, z: result.z, t: 1 }
+        : null;
+  }
+
+  private aiThink(dt: number): void {
+    const level = this.state.levelConfig;
+    if (
+      this.opponent.plan &&
+      this.simulationTime > this.opponent.react
+    ) {
+      if (this.simulationTime > this.opponent.nextRefine) {
+        this.opponent.nextRefine =
+          this.simulationTime + level.refine;
+        this.refineAi(level.perr * 0.45);
+      }
+      const distance = this.opponent.plan.x - this.opponent.x;
+      const move = level.speed * dt;
+      this.opponent.x +=
+        Math.abs(distance) < move
+          ? distance
+          : Math.sign(distance) * move;
+    }
+    this.opponent.x = Math.max(
+      -104,
+      Math.min(104, this.opponent.x),
+    );
+  }
+
+  private aiHit(): boolean {
+    const level = this.state.levelConfig;
+    if (
+      Math.abs(this.ball.x - this.opponent.x) > level.reach ||
+      this.ball.y < -42 ||
+      this.ball.y > 105
+    ) {
+      return false;
+    }
+
+    const quality =
+      1 - Math.abs(this.ball.x - this.opponent.x) / level.reach;
+    let type: ShotId;
+    if (this.ball.y < -12) {
+      type = "LOB";
+    } else if (this.ball.y > 24 && this.random() < level.smash) {
+      type = "SMASH";
+    } else if (this.ball.spin < -0.35 && this.ball.y < 14) {
+      type = this.random() < level.chop ? "CHOP" : "PUSH";
+    } else if (this.random() < level.chop * 0.5) {
+      type = "CHOP";
+    } else {
+      type = "DRIVE";
+    }
+
+    const aim =
+      this.state.level === "hard"
+        ? -Math.sign(this.player.x || 1) *
+          HW *
+          0.72 *
+          (0.6 + 0.4 * this.random())
+        : (this.random() * 2 - 1) * HW * 0.8 * level.spread;
+    const depth = level.depth * (0.82 + 0.3 * this.random());
+    const blunder = this.random() < level.miss ? 0.075 : 0;
+    this.makeShot(
+      "A",
+      type,
+      aim,
+      depth,
+      Math.max(0.25, quality),
+      blunder,
+    );
+    return true;
+  }
+
+  private updatePhysics(dt: number): void {
+    if (!this.ball.live) {
+      return;
+    }
+    const previousX = this.ball.x;
+    const previousY = this.ball.y;
+    const previousZ = this.ball.z;
+    integrate(this.ball, dt);
+
+    this.trail.push({
+      x: this.ball.x,
+      y: this.ball.y,
+      z: this.ball.z,
+    });
+    if (this.trail.length > 9) {
+      this.trail.shift();
+    }
+
+    if ((previousZ < 0) !== (this.ball.z < 0)) {
+      const ratio = (0 - previousZ) / (this.ball.z - previousZ);
+      const y = previousY + (this.ball.y - previousY) * ratio;
+      const x = previousX + (this.ball.x - previousX) * ratio;
+      if (y < NET_H && Math.abs(x) < NET_HW) {
+        this.ball.z = 0;
+        this.ball.vz *= -0.22;
+        this.ball.vy *= 0.35;
+        this.ball.vx *= 0.4;
+        this.ball.spin *= 0.3;
+        this.ball.side *= 0.3;
+        this.feedback.net();
+        this.point(
+          this.ball.hitter === "P" ? "A" : "P",
+          "ネット",
+        );
+        return;
+      }
+    }
+
+    if (previousY > 0 && this.ball.y <= 0) {
+      if (onTable(this.ball.x, this.ball.z)) {
+        tableBounce(this.ball);
+        this.feedback.bounce();
+        this.judgeBounce();
+      } else {
+        this.point(
+          this.ball.bounces >= 1
+            ? this.ball.hitter
+            : this.ball.hitter === "P"
+              ? "A"
+              : "P",
+          this.ball.bounces >= 1 ? "返せず" : "アウト",
+        );
+        return;
+      }
+    }
+
+    if (this.ball.y < FLOOR) {
+      this.point(
+        this.ball.bounces >= 1
+          ? this.ball.hitter
+          : this.ball.hitter === "P"
+            ? "A"
+            : "P",
+        this.ball.bounces >= 1 ? "返せず" : "アウト",
+      );
+      return;
+    }
+
+    if (previousZ > this.player.z && this.ball.z <= this.player.z) {
+      this.playerContact();
+    }
+    if (
+      previousZ < this.opponent.z &&
+      this.ball.z >= this.opponent.z
+    ) {
+      this.opponentContact();
+    }
+
+    if (this.mark) {
+      const distance = Math.abs(this.ball.z - this.mark.z);
+      this.mark.t = Math.max(0, Math.min(1, distance / 180));
+    }
+
+    if (
+      this.ball.hitter === "A" &&
+      this.ball.bounces >= 1 &&
+      this.ball.vz < 0
+    ) {
+      if (this.simulationTime > this.smashCheck) {
+        this.smashCheck = this.simulationTime + 0.08;
+        const prediction = predictAt(
+          this.ball,
+          this.player.z,
+          -1,
+          FLOOR,
+        );
+        this.smashable = Boolean(
+          prediction &&
+            prediction.y > 26 &&
+            Math.abs(prediction.x - this.player.x) < P_REACH + 8,
+        );
+      }
+    } else {
+      this.smashable = false;
+      this.smashCheck = 0;
+    }
+  }
+
+  private judgeBounce(): void {
+    const side: Side = this.ball.z < 0 ? "P" : "A";
+    if (this.ball.serveStage === 1) {
+      if (side !== this.ball.hitter) {
+        this.point(
+          this.ball.hitter === "P" ? "A" : "P",
+          "サーブフォルト",
+        );
+        return;
+      }
+      this.ball.serveStage = 2;
+      return;
+    }
+    if (this.ball.serveStage === 2) {
+      if (side === this.ball.hitter) {
+        this.point(
+          this.ball.hitter === "P" ? "A" : "P",
+          "サーブフォルト",
+        );
+        return;
+      }
+      this.ball.serveStage = 0;
+      this.ball.bounces = 1;
+      return;
+    }
+    if (this.ball.bounces === 0) {
+      if (side === this.ball.hitter) {
+        this.point(
+          this.ball.hitter === "P" ? "A" : "P",
+          "自陣に落下",
+        );
+        return;
+      }
+      this.ball.bounces = 1;
+      return;
+    }
+    this.point(this.ball.hitter, "返せず");
+  }
+
+  private playerContact(): void {
+    if (
+      this.ball.hitter === "P" ||
+      this.ball.bounces < 1 ||
+      Math.abs(this.ball.x - this.player.x) > P_REACH ||
+      this.ball.y < -46 ||
+      this.ball.y > 108
+    ) {
+      return;
+    }
+
+    const flick = this.input?.currentFlick() ?? null;
+    let type: ShotId;
+    if (!flick) {
+      type = "PUSH";
+    } else {
+      const upward = -flick.vy;
+      const downward = flick.vy;
+      if (upward > 0.42 * flick.sp) {
+        if (this.ball.y < -8) {
+          type = "LOB";
+        } else if (flick.sp > 3 && this.ball.y > 26) {
+          type = "SMASH";
+        } else {
+          type = "DRIVE";
+        }
+      } else if (downward > 0.42 * flick.sp) {
+        type = "CHOP";
+      } else {
+        type = "PUSH";
+      }
+      this.input?.clearFlick();
+    }
+
+    const quality =
+      1 - Math.abs(this.ball.x - this.player.x) / P_REACH;
+    const offset = (this.ball.x - this.player.x) / P_REACH;
+    const horizontalFlick = flick?.vx ?? 0;
+    const aim = -offset * HW * 0.85 + horizontalFlick * 46;
+    const depth =
+      SHOTS[type].dep *
+      (flick ? 0.85 + Math.min(0.45, flick.sp * 0.09) : 1);
+    this.makeShot("P", type, aim, depth, quality, 0);
+    this.mark = null;
+  }
+
+  private opponentContact(): void {
+    if (this.ball.hitter === "A" || this.ball.bounces < 1) {
+      return;
+    }
+    this.aiHit();
+  }
+
+  private point(winner: Side, reason: string): void {
+    if (this.state.phase === "point" || this.state.phase === "over") {
+      return;
+    }
+    if (winner === "P") {
+      this.state.scP += 1;
+      this.feedback.win();
+    } else {
+      this.state.scA += 1;
+      this.feedback.lose();
+    }
+    this.ball.live = false;
+    this.mark = null;
+    this.smashable = false;
+    this.state.phase = "point";
+    this.state.pointTimer = 1.25;
+    this.ui.flash(
+      reason,
+      winner === "P" ? "#7ee0a8" : "#ff8a6b",
+      1.1,
+    );
+
+    const rotation = rotateServerAfterPoint(
+      this.state.server,
+      this.state.servedCount,
+      this.state.scP,
+      this.state.scA,
+    );
+    this.state.server = rotation.server;
+    this.state.servedCount = rotation.servedCount;
+    this.ui.updateHud(this.state);
+    this.ui.updateServeControls(this.state);
+
+    if (isGameOver(this.state.scP, this.state.scA)) {
+      this.state.phase = "over";
+      window.setTimeout(() => {
+        if (this.state.phase === "over") {
+          this.cancelServeTimer();
+          this.ui.showResult(this.state);
+        }
+      }, 1000);
+    }
+  }
+}

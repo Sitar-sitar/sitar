@@ -5,11 +5,6 @@ on:
     paths:
       - "table-tennis/**"
       - ".github/workflows/test-table-tennis.yml"
-  push:
-    branches: [master]
-    paths:
-      - "table-tennis/**"
-      - ".github/workflows/test-table-tennis.yml"
   workflow_dispatch:
 
 permissions:
@@ -23,7 +18,7 @@ jobs:
         working-directory: table-tennis
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -38,7 +33,7 @@ jobs:
         run: npm run check
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: table-tennis-playwright-report
           path: table-tennis/playwright-report

@@ -30,5 +30,11 @@ export default defineConfig({
         ...devices["iPhone 13"],
       },
     },
+    {
+      name: "mobile-chromium",
+      use: {
+        ...devices["Pixel 7"],
+      },
+    },
   ],
 });

@@ -1,5 +1,6 @@
 import eslint from "@eslint/js";
 import globals from "globals";
+import tseslint from "typescript-eslint";
 
 export default [
   {
@@ -12,6 +13,15 @@ export default [
     ],
   },
   eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ["src/**/*.ts"],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
   {
     files: ["sw.js"],
     languageOptions: {
@@ -21,7 +31,7 @@ export default [
     },
   },
   {
-    files: ["*.config.js", "scripts/**/*.mjs", "tests/**/*.{js,mjs}"],
+    files: ["*.config.js", "scripts/**/*.mjs", "tests/**/*.{js,mjs,ts}"],
     languageOptions: {
       globals: {
         ...globals.node,

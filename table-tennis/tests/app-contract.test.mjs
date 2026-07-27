@@ -15,6 +15,10 @@ test("PWAの必須ファイルが存在する", async () => {
       "icons/icon-512.png",
       "icons/icon-maskable-512.png",
       "icons/apple-touch-icon.png",
+      "src/main.ts",
+      "src/game.ts",
+      "src/physics.ts",
+      "src/styles.css",
     ].map((path) => access(resolve(root, path))),
   );
 });
@@ -40,4 +44,7 @@ test("Service Workerはアプリシェルをキャッシュする", async () => 
   assert.match(serviceWorker, /cache\.addAll\(APP_SHELL\)/u);
   assert.match(serviceWorker, /caches\.match\(event\.request\)/u);
   assert.match(serviceWorker, /caches\.match\("\.\/index\.html"\)/u);
+  assert.match(serviceWorker, /"\.\/assets\/app\.js"/u);
+  assert.match(serviceWorker, /"\.\/assets\/app\.css"/u);
+  assert.match(serviceWorker, /event\.request\.mode === "navigate"/u);
 });

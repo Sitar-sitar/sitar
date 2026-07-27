@@ -13,52 +13,69 @@ function fail(message) {
 }
 
 const html = await read("index.html");
-const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gu)];
-
-if (scripts.length === 0) {
-  fail("index.html にインラインスクリプトがありません。");
+if (
+  !/<script\b(?=[^>]*\btype="module")(?=[^>]*\bsrc="\.\/src\/main\.ts")[^>]*>/u.test(
+    html,
+  )
+) {
+  fail("index.html がTypeScriptモジュールを参照していません。");
+}
+if (!/<body\b[^>]*\bdata-service-worker="\.\/sw\.js"[^>]*>/u.test(html)) {
+  fail("index.html がService Worker登録先を宣言していません。");
+}
+if (/<script(?![^>]*\bsrc=)[^>]*>/u.test(html)) {
+  fail("index.html にインラインスクリプトを残さないでください。");
 }
 
-for (const [index, match] of scripts.entries()) {
-  new vm.Script(match[1], { filename: `index.html#script-${index + 1}` });
+for (const sourcePath of [
+  "src/main.ts",
+  "src/config.ts",
+  "src/types.ts",
+  "src/physics.ts",
+  "src/rules.ts",
+  "src/game.ts",
+  "src/input.ts",
+  "src/render.ts",
+  "src/ui.ts",
+  "src/feedback.ts",
+  "src/styles.css",
+]) {
+  await access(resolve(root, sourcePath));
 }
 
 const manifest = JSON.parse(await read("manifest.webmanifest"));
-const requiredManifestFields = ["name", "short_name", "start_url", "display", "icons"];
-
-for (const field of requiredManifestFields) {
+for (const field of ["name", "short_name", "start_url", "display", "icons"]) {
   if (manifest[field] === undefined) {
     fail(`manifest.webmanifest に ${field} がありません。`);
   }
 }
-
 if (!Array.isArray(manifest.icons) || manifest.icons.length === 0) {
   fail("manifest.webmanifest にアイコンがありません。");
 }
-
 for (const icon of manifest.icons) {
   const relativePath = icon.src.replace(/^\.\//u, "");
   await access(resolve(root, relativePath));
 }
 
-const requiredHtmlReferences = [
+for (const reference of [
   "./manifest.webmanifest",
   "./icons/apple-touch-icon.png",
-  "./sw.js",
-];
-
-for (const reference of requiredHtmlReferences) {
+]) {
   if (!html.includes(reference)) {
     fail(`index.html が ${reference} を参照していません。`);
   }
 }
+if ((html.match(/\bvite-ignore\b/gu) ?? []).length < 3) {
+  fail("PWA固定アセットにvite-ignoreが不足しています。");
+}
 
 const serviceWorker = await read("sw.js");
 new vm.Script(serviceWorker, { filename: "sw.js" });
-
 for (const appShellPath of [
   "./",
   "./index.html",
+  "./assets/app.js",
+  "./assets/app.css",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -71,5 +88,5 @@ for (const appShellPath of [
 }
 
 console.log(
-  `app check: OK (${scripts.length} scripts, ${manifest.icons.length} manifest icons)`,
+  `app check: OK (${manifest.icons.length} manifest icons, TypeScript modules)`,
 );
