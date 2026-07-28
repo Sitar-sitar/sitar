@@ -23,7 +23,11 @@ import {
   rotateServerAfterPoint,
 } from "../src/rules.ts";
 import type { BallVector, ServeType } from "../src/types.ts";
-import { moveToward } from "../src/utils.ts";
+import {
+  moveToward,
+  paddleScreenRadius,
+  paddleScreenY,
+} from "../src/utils.ts";
 
 function traceServe(
   serveType: ServeType,
@@ -120,6 +124,22 @@ test("moveTowardは目標を越えない", () => {
   assert.equal(moveToward(0, 10, 3), 3);
   assert.equal(moveToward(0, 2, 3), 2);
   assert.equal(moveToward(0, -10, 3), -3);
+});
+
+test("プレイヤーラケットの縦位置は画面下部を基準にスイングで変わる", () => {
+  const height = 1_000;
+  const baseY = height * 0.86;
+
+  assert.equal(paddleScreenY(height, 0, 1), baseY);
+  assert.ok(paddleScreenY(height, 1, 1) < baseY);
+  assert.ok(paddleScreenY(height, 1, -1) > baseY);
+  assert.ok(paddleScreenY(height, 1, 0) < baseY);
+});
+
+test("プレイヤーラケット半径は画面短辺を基準に上下限へ収まる", () => {
+  assert.equal(paddleScreenRadius(320, 240), 18);
+  assert.equal(paddleScreenRadius(2_000, 1_500), 46);
+  assert.equal(paddleScreenRadius(800, 600), 33);
 });
 
 test("バウンド有無で失点者と理由が決まる", () => {

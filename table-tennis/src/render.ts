@@ -8,6 +8,7 @@ import {
 } from "./config.ts";
 import { onTable } from "./physics.ts";
 import type { RenderScene, Viewport } from "./types.ts";
+import { paddleScreenRadius, paddleScreenY } from "./utils.ts";
 
 interface ProjectedPoint {
   x: number;
@@ -535,48 +536,39 @@ export class Renderer {
     const context = this.context;
     const swing =
       player.swing > 0 ? Math.sin(player.swing * Math.PI) : 0;
-    const y =
-      16 +
-      (player.swingType === 1
-        ? swing * 26
-        : player.swingType === -1
-          ? -swing * 14
-          : swing * 8);
-    const point = this.project(player.x, y, player.z + swing * 8);
-    const radius = Math.max(9, 9.6 * point.s * 1.35);
+    const projected = this.project(player.x, 0, player.z);
+    const x = projected.x;
+    const y = paddleScreenY(this.height, swing, player.swingType);
+    const radius = paddleScreenRadius(this.width, this.height);
 
-    const gradient = context.createLinearGradient(
-      point.x,
-      point.y,
-      point.x,
-      this.height,
-    );
-    gradient.addColorStop(0, "#2c3e50");
-    gradient.addColorStop(1, "rgba(20,28,38,0)");
-    context.strokeStyle = gradient;
-    context.lineWidth = radius * 0.55;
-    context.lineCap = "round";
+    const shadowAlpha = 0.28 - swing * 0.16;
+    const shadowRadiusX = radius * (0.9 - swing * 0.2);
+    context.fillStyle = `rgba(0,0,0,${shadowAlpha})`;
     context.beginPath();
-    context.moveTo(point.x, point.y + radius * 0.7);
-    context.lineTo(
-      point.x * 0.7 + this.width * 0.15,
-      this.height + 20,
+    context.ellipse(
+      x,
+      this.height * 0.955,
+      shadowRadiusX,
+      radius * 0.28,
+      0,
+      0,
+      7,
     );
-    context.stroke();
+    context.fill();
 
     if (scene.smashable) {
       context.beginPath();
-      context.arc(point.x, point.y, radius * 1.55, 0, 7);
+      context.arc(x, y, radius * 1.55, 0, 7);
       context.strokeStyle = "rgba(255,194,75,.85)";
       context.lineWidth = 2.5;
       context.stroke();
       context.beginPath();
-      context.arc(point.x, point.y, radius * 1.95, 0, 7);
+      context.arc(x, y, radius * 1.95, 0, 7);
       context.strokeStyle = "rgba(255,194,75,.22)";
       context.lineWidth = 5;
       context.stroke();
     }
-    this.paddle(point, point.s, "#cb4335");
+    this.paddle({ x, y, s: 1 }, radius / 9.6, "#cb4335");
   }
 
   private drawBall(): void {

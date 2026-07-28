@@ -185,6 +185,13 @@ export const AI_SERVE_WEIGHTS: Record<
 
 export const PADDLE_LIMIT = 104;
 export const PLAYER_AIM_SPAN = 210;
+export const PADDLE_SCREEN_Y = 0.86;
+export const PADDLE_SWING_LIFT = 0.1;
+export const PADDLE_SWING_DROP = 0.045;
+export const PADDLE_SWING_PUSH = 0.03;
+export const PADDLE_SCREEN_SIZE = 0.055;
+export const PADDLE_SIZE_MIN = 18;
+export const PADDLE_SIZE_MAX = 46;
 export const MAX_SUBSTEPS = 12;
 export const SWING_DECAY = 6;
 export const SERVE_BALL_Y = 26;
