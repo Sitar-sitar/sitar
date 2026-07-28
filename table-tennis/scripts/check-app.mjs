@@ -27,6 +27,20 @@ if (/<script(?![^>]*\bsrc=)[^>]*>/u.test(html)) {
   fail("index.html にインラインスクリプトを残さないでください。");
 }
 
+for (const elementId of [
+  "playerBar",
+  "playerName",
+  "playerRecord",
+  "hudPlayerName",
+  "players",
+  "stats",
+  "rRecord",
+]) {
+  if (!new RegExp(`\\bid="${elementId}"`, "u").test(html)) {
+    fail(`index.html に戦績UIの #${elementId} がありません。`);
+  }
+}
+
 for (const sourcePath of [
   "src/main.ts",
   "src/config.ts",
