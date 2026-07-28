@@ -183,4 +183,30 @@ export const AI_SERVE_WEIGHTS: Record<
   },
 };
 
+export const PADDLE_LIMIT = 104;
+export const PLAYER_AIM_SPAN = 210;
+export const MAX_SUBSTEPS = 12;
+export const SWING_DECAY = 6;
+export const SERVE_BALL_Y = 26;
+export const AI_SERVE_DELAY_MS = 700;
+export const SERVE_CONTACT_Y = 24;
+export const CONTACT_PLANE_NEAR = 62;
+export const CONTACT_PLANE_FAR = 178;
+export const SHOT_ORIGIN_Y_MIN = -46;
+export const AI_CONTACT_Y_MIN = -42;
+export const AI_CONTACT_Y_MAX = 105;
+export const TRAIL_LENGTH = 9;
+export const SMASH_CHECK_INTERVAL = 0.08;
+export const SMASH_MIN_Y = 26;
+export const SMASH_REACH_MARGIN = 8;
+export const PLAYER_CONTACT_Y_MIN = -46;
+export const PLAYER_CONTACT_Y_MAX = 108;
+export const LOB_MAX_Y = -8;
+export const POINT_INTERVAL = 1.25;
+export const RESULT_DELAY_MS = 1000;
+export const AI_LOB_MAX_Y = -12;
+export const AI_SMASH_MIN_Y = 24;
+export const AI_CHOP_SPIN_MAX = -0.35;
+export const AI_CHOP_MAX_Y = 14;
+
 export const FIXED_STEP = 1 / 240;

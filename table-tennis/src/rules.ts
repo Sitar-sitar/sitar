@@ -20,6 +20,19 @@ export function chooseWeightedServe(
   return "knuckle";
 }
 
+export function opponentOf(side: Side): Side {
+  return side === "P" ? "A" : "P";
+}
+
+export function resolveMiss(
+  bounces: number,
+  hitter: Side,
+): { winner: Side; reason: string } {
+  return bounces >= 1
+    ? { winner: hitter, reason: "返せず" }
+    : { winner: opponentOf(hitter), reason: "アウト" };
+}
+
 export function rotateServerAfterPoint(
   server: Side,
   servedCount: number,
@@ -33,7 +46,7 @@ export function rotateServerAfterPoint(
     return { server, servedCount: nextCount };
   }
   return {
-    server: server === "P" ? "A" : "P",
+    server: opponentOf(server),
     servedCount: 0,
   };
 }
