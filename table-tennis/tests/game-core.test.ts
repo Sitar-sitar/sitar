@@ -22,6 +22,7 @@ import {
   rotateServerAfterPoint,
 } from "../src/rules.ts";
 import type { BallVector, ServeType } from "../src/types.ts";
+import { moveToward } from "../src/utils.ts";
 
 function traceServe(
   serveType: ServeType,
@@ -112,6 +113,12 @@ test("AIサーブ重みは難易度ごとの境界を選べる", () => {
 test("相手サイドを反転できる", () => {
   assert.equal(opponentOf("P"), "A");
   assert.equal(opponentOf("A"), "P");
+});
+
+test("moveTowardは目標を越えない", () => {
+  assert.equal(moveToward(0, 10, 3), 3);
+  assert.equal(moveToward(0, 2, 3), 2);
+  assert.equal(moveToward(0, -10, 3), -3);
 });
 
 test("通常時は2本、デュース時は1本でサーバー交代する", () => {

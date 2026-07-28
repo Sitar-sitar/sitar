@@ -7,8 +7,10 @@ import {
   LEVELS,
   NET_H,
   NET_HW,
+  PADDLE_LIMIT,
   P_REACH,
   P_SPEED,
+  PLAYER_AIM_SPAN,
   PZ,
   SERVE_PROFILES,
   SHOTS,
@@ -50,6 +52,7 @@ import type {
   Side,
 } from "./types.ts";
 import { Ui } from "./ui.ts";
+import { clamp, moveToward } from "./utils.ts";
 
 export class Game {
   public readonly state: GameState = {
@@ -194,9 +197,10 @@ export class Game {
 
   public updatePlayerTarget(clientX: number): void {
     const width = Math.max(1, this.renderer?.getViewport().width ?? 1);
-    this.player.tx = Math.max(
-      -104,
-      Math.min(104, (clientX / width - 0.5) * 210),
+    this.player.tx = clamp(
+      (clientX / width - 0.5) * PLAYER_AIM_SPAN,
+      -PADDLE_LIMIT,
+      PADDLE_LIMIT,
     );
   }
 
@@ -267,12 +271,11 @@ export class Game {
 
   private tick(dt: number): void {
     this.simulationTime += dt;
-    const playerDistance = this.player.tx - this.player.x;
-    const playerMove = P_SPEED * dt;
-    this.player.x +=
-      Math.abs(playerDistance) < playerMove
-        ? playerDistance
-        : Math.sign(playerDistance) * playerMove;
+    this.player.x = moveToward(
+      this.player.x,
+      this.player.tx,
+      P_SPEED * dt,
+    );
 
     this.aiThink(dt);
     this.updatePhysics(dt);
@@ -771,16 +774,16 @@ export class Game {
           this.simulationTime + level.refine;
         this.refineAi(level.perr * 0.45);
       }
-      const distance = this.opponent.plan.x - this.opponent.x;
-      const move = level.speed * dt;
-      this.opponent.x +=
-        Math.abs(distance) < move
-          ? distance
-          : Math.sign(distance) * move;
+      this.opponent.x = moveToward(
+        this.opponent.x,
+        this.opponent.plan.x,
+        level.speed * dt,
+      );
     }
-    this.opponent.x = Math.max(
-      -104,
-      Math.min(104, this.opponent.x),
+    this.opponent.x = clamp(
+      this.opponent.x,
+      -PADDLE_LIMIT,
+      PADDLE_LIMIT,
     );
   }
 

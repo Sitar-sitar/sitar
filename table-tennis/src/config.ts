@@ -183,4 +183,7 @@ export const AI_SERVE_WEIGHTS: Record<
   },
 };
 
+export const PADDLE_LIMIT = 104;
+export const PLAYER_AIM_SPAN = 210;
+
 export const FIXED_STEP = 1 / 240;
