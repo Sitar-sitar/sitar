@@ -84,6 +84,7 @@ export interface GameState {
   server: Side;
   servedCount: number;
   rally: number;
+  maxRally: number;
   pointTimer: number;
   sound: boolean;
   vibe: boolean;
@@ -134,3 +135,69 @@ export interface Viewport {
   width: number;
   height: number;
 }
+
+export interface PlayerRecord {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface MatchRecord {
+  id: string;
+  playerId: string;
+  playedAt: string;
+  level: LevelId;
+  won: boolean;
+  scoreP: number;
+  scoreA: number;
+  maxRally: number;
+  durationSec: number;
+}
+
+export interface MatchResult {
+  matchSeq: number;
+  playerId: string | null;
+  playerName: string | null;
+  level: LevelId;
+  won: boolean;
+  scoreP: number;
+  scoreA: number;
+  maxRally: number;
+  startedAt: string;
+  playedAt: string;
+  durationSec: number;
+}
+
+export type RecordStatus =
+  | "unavailable"
+  | "pending"
+  | "saved"
+  | "failed";
+
+export interface ResultRecord {
+  matchSeq: number;
+  status: RecordStatus;
+  label: string;
+}
+
+export interface PlayerSelection {
+  players: PlayerRecord[];
+  selectedPlayerId: string | null;
+}
+
+export interface LevelSummary {
+  matches: number;
+  wins: number;
+}
+
+export interface PlayerStats {
+  matches: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  maxRally: number;
+  byLevel: Record<LevelId, LevelSummary>;
+  recent: MatchRecord[];
+}
+
+export type StatsPhase = "loading" | "ready" | "unavailable";

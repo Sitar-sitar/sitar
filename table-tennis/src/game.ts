@@ -61,7 +61,9 @@ import type {
   GameState,
   LevelId,
   Mark,
+  MatchResult,
   PaddleState,
+  PlayerRecord,
   RenderScene,
   ServeSolution,
   ServeType,
@@ -72,6 +74,8 @@ import { Ui } from "./ui.ts";
 import { clamp, moveToward } from "./utils.ts";
 
 export class Game {
+  public onMatchEnd?: (result: MatchResult) => void;
+
   public readonly state: GameState = {
     phase: "title",
     paused: false,
@@ -82,6 +86,7 @@ export class Game {
     server: "P",
     servedCount: 0,
     rally: 0,
+    maxRally: 0,
     pointTimer: 0,
     sound: true,
     vibe: true,
@@ -126,6 +131,11 @@ export class Game {
   private lastFrame = 0;
   private accumulator = 0;
   private loopStarted = false;
+  private matchSeq = 0;
+  private matchPlayer: PlayerRecord | null = null;
+  private matchStartedAt = 0;
+  private matchStartedAtIso = "";
+  private currentPlayer: PlayerRecord | null = null;
 
   public constructor(
     private readonly ui: Ui,
@@ -138,6 +148,10 @@ export class Game {
   public attach(input: InputController, renderer: Renderer): void {
     this.input = input;
     this.renderer = renderer;
+  }
+
+  public setPlayer(player: PlayerRecord | null): void {
+    this.currentPlayer = player;
   }
 
   public bindUi(): void {
@@ -316,6 +330,10 @@ export class Game {
 
   private newGame(): void {
     this.cancelServeTimer();
+    this.matchSeq += 1;
+    this.matchPlayer = this.currentPlayer;
+    this.matchStartedAt = performance.now();
+    this.matchStartedAtIso = new Date().toISOString();
     this.state.paused = false;
     this.lastFrame = 0;
     this.accumulator = 0;
@@ -325,6 +343,8 @@ export class Game {
     this.state.server = this.random() < 0.5 ? "P" : "A";
     this.state.servedCount = 0;
     this.state.phase = "serve";
+    this.state.rally = 0;
+    this.state.maxRally = 0;
     this.player.x = 0;
     this.player.tx = 0;
     this.ai.reset();
@@ -987,6 +1007,10 @@ export class Game {
     if (this.state.phase === "point" || this.state.phase === "over") {
       return;
     }
+    this.state.maxRally = Math.max(
+      this.state.maxRally,
+      this.state.rally,
+    );
     if (winner === "P") {
       this.state.scP += 1;
       this.feedback.win();
@@ -1018,12 +1042,34 @@ export class Game {
 
     if (isGameOver(this.state.scP, this.state.scA)) {
       this.state.phase = "over";
+      const seq = this.matchSeq;
+      this.onMatchEnd?.(this.buildMatchResult());
       window.setTimeout(() => {
-        if (this.state.phase === "over") {
+        if (this.state.phase === "over" && this.matchSeq === seq) {
           this.cancelServeTimer();
-          this.ui.showResult(this.state);
+          this.ui.showResult(this.state, seq);
         }
       }, RESULT_DELAY_MS);
     }
+  }
+
+  private buildMatchResult(): MatchResult {
+    const playedAt = new Date().toISOString();
+    return {
+      matchSeq: this.matchSeq,
+      playerId: this.matchPlayer?.id ?? null,
+      playerName: this.matchPlayer?.name ?? null,
+      level: this.state.level,
+      won: this.state.scP > this.state.scA,
+      scoreP: this.state.scP,
+      scoreA: this.state.scA,
+      maxRally: this.state.maxRally,
+      startedAt: this.matchStartedAtIso,
+      playedAt,
+      durationSec: Math.max(
+        0,
+        Math.round((performance.now() - this.matchStartedAt) / 1_000),
+      ),
+    };
   }
 }

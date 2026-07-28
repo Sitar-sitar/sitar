@@ -58,7 +58,8 @@
       </div>
       <div class="cell">
         <div class="lbl">
-          <span id="sP" class="serve"></span>あなた
+          <span id="sP" class="serve"></span
+          ><span id="hudPlayerName">あなた</span>
         </div>
         <div class="num" id="scP">0</div>
       </div>
@@ -123,6 +124,28 @@
       <div class="eyebrow">TABLE TENNIS</div>
       <h1>卓球</h1>
       <div class="sub">体育館の一台。11点先取、2点差で勝ち。</div>
+      <div id="playerBar" class="player-bar">
+        <div class="player-bar__summary">
+          <span id="playerName">あなた</span>
+          <span id="playerRecord"></span>
+        </div>
+        <div id="playerNotice" class="player-notice" aria-live="polite">
+          戦績を準備しています…
+        </div>
+        <div class="player-bar__actions">
+          <button
+            id="openPlayers"
+            class="tg"
+            type="button"
+            disabled
+          >
+            プレイヤー
+          </button>
+          <button id="openStats" class="tg" type="button" disabled>
+            戦績
+          </button>
+        </div>
+      </div>
       <div class="seclbl">あいての強さ</div>
       <div class="lvs" id="lvs">
         <button class="lv" type="button" data-lv="easy">
@@ -165,11 +188,49 @@
       </div>
     </div>
 
+    <div class="ov" id="players">
+      <div class="eyebrow">PLAYER</div>
+      <h2>プレイヤー</h2>
+      <div id="playerList" class="player-list"></div>
+      <div class="player-add">
+        <input
+          id="playerInput"
+          type="text"
+          aria-label="新しいプレイヤー名"
+          autocomplete="off"
+          placeholder="名前（1〜12文字）"
+        >
+        <button id="playerAdd" class="btn player-add__button" type="button">
+          追加
+        </button>
+      </div>
+      <div id="playerError" class="player-error" aria-live="polite"></div>
+      <button class="btn ghost" type="button" id="playersClose">
+        閉じる
+      </button>
+    </div>
+
+    <div class="ov" id="stats">
+      <div class="eyebrow">RECORD</div>
+      <h2 id="statsPlayerName">戦績</h2>
+      <div class="stats-panel">
+        <div id="statsSummary" class="stats-summary"></div>
+        <h3>難易度別</h3>
+        <div id="statsByLevel" class="stats-by-level"></div>
+        <h3>直近10試合</h3>
+        <div id="statsRecent" class="stats-recent"></div>
+      </div>
+      <button class="btn ghost" type="button" id="statsClose">
+        閉じる
+      </button>
+    </div>
+
     <div class="ov" id="result">
       <div class="eyebrow" id="rEye">GAME</div>
       <h2 id="rTitle">勝ち</h2>
       <div class="final" id="rScore">11 - 8</div>
       <div class="sub" id="rSub"></div>
+      <div id="rRecord" class="result-record" aria-live="polite"></div>
       <button class="btn" type="button" id="again">もう一度</button>
       <div class="row">
         <button class="btn ghost" type="button" id="back">

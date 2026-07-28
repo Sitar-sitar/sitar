@@ -32,7 +32,11 @@ test("難易度を変更して一時停止できる", async ({ page }) => {
   await expect(page.locator("#pause")).not.toHaveClass(/show/u);
 });
 
-test("PWAのService Workerが登録される", async ({ page }) => {
+test("PWA登録とオフライン用キャッシュを確認できる", async ({
+  browserName,
+  context,
+  page,
+}) => {
   await page.goto("/");
 
   const scriptUrl = await page.evaluate(async () => {
@@ -41,6 +45,37 @@ test("PWAのService Workerが登録される", async ({ page }) => {
   });
 
   expect(scriptUrl).toMatch(/\/sw\.js$/u);
+  await page.waitForFunction(
+    () => navigator.serviceWorker.controller !== null,
+    undefined,
+    { timeout: 10_000 },
+  );
+  await page.reload();
+  await expect(page.locator("#openStats")).toBeEnabled();
+
+  if (browserName === "webkit") {
+    const cachedPaths = await page.evaluate(async () =>
+      (await (await caches.open("table-tennis-v3")).keys()).map(
+        (request) => new URL(request.url).pathname,
+      ),
+    );
+    expect(cachedPaths).toEqual(
+      expect.arrayContaining([
+        "/",
+        "/index.html",
+        "/assets/app.js",
+        "/assets/app.css",
+      ]),
+    );
+    return;
+  }
+
+  await context.setOffline(true);
+  await page.reload();
+
+  await expect(page).toHaveTitle("卓球");
+  await expect(page.locator("#playerName")).toHaveText("ゲスト");
+  await expect(page.locator("#openStats")).toBeEnabled();
 });
 
 test("5種類のサーブを選択して実行できる", async ({ page }) => {

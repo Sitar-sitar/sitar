@@ -1,4 +1,4 @@
-const CACHE_NAME = "table-tennis-v2";
+const CACHE_NAME = "table-tennis-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -35,24 +35,26 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetched = fetch(event.request)
-        .then((response) => {
-          if (response.ok && new URL(event.request.url).origin === self.location.origin) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          }
-          return response;
-        })
-        .catch(async () => {
-          if (cached) return cached;
-          if (event.request.mode === "navigate") {
-            return caches.match("./index.html");
-          }
-          return Response.error();
-        });
+    (async () => {
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
 
-      return cached || fetched;
-    })
+      try {
+        const response = await fetch(event.request);
+        if (
+          response.ok &&
+          new URL(event.request.url).origin === self.location.origin
+        ) {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(event.request, response.clone());
+        }
+        return response;
+      } catch {
+        if (event.request.mode === "navigate") {
+          return (await caches.match("./index.html")) ?? Response.error();
+        }
+        return Response.error();
+      }
+    })()
   );
 });

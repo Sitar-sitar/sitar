@@ -12,7 +12,8 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npm run dev -- --host 127.0.0.1",
+    command:
+      "npm run build && npm run preview -- --host 127.0.0.1 --port 3038",
     url: "http://127.0.0.1:3038",
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

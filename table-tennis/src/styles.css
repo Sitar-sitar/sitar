@@ -77,6 +77,15 @@ body {
   margin-bottom: 2px;
 }
 
+#hudPlayerName {
+  display: inline-block;
+  max-width: 82px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
 .cell .num {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 27px;
@@ -407,6 +416,207 @@ h2 {
   border-color: #4a5c6b;
 }
 
+.player-bar {
+  width: min(100%, 350px);
+  margin: -12px 0 18px;
+  padding: 12px;
+  border: 1px solid #2b3742;
+  border-radius: 12px;
+  background: rgb(13 18 24 / 72%);
+}
+
+.player-bar__summary {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+}
+
+#playerName {
+  max-width: 210px;
+  overflow: hidden;
+  color: #f2f6f9;
+  font-size: 15px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#playerRecord {
+  color: var(--led);
+  font-size: 12px;
+}
+
+.player-notice {
+  min-height: 18px;
+  margin-top: 4px;
+  color: #93a3b0;
+  font-size: 11px;
+}
+
+.player-bar__actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.player-bar__actions .tg {
+  min-width: 108px;
+  color: #c6d2dc;
+}
+
+.player-bar__actions .tg:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.player-list {
+  width: min(100%, 480px);
+  max-height: 42vh;
+  margin: 10px 0 14px;
+  overflow-y: auto;
+}
+
+.player-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 52px;
+  padding: 7px;
+  border-bottom: 1px solid #26313c;
+}
+
+.player-select,
+.player-action,
+.player-rename-input,
+.player-add input {
+  min-height: 42px;
+  border: 1px solid #35434f;
+  border-radius: 9px;
+  background: #131b23;
+  color: #dbe5ec;
+}
+
+.player-select {
+  min-width: 0;
+  padding: 8px 12px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-select[aria-current="true"] {
+  border-color: var(--ball);
+  color: #ffad72;
+  box-shadow: inset 0 0 0 1px rgb(242 113 28 / 25%);
+}
+
+.player-action {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.player-action--danger {
+  border-color: #a7473e;
+  color: #ff998d;
+}
+
+.player-rename-input,
+.player-add input {
+  min-width: 0;
+  padding: 8px 12px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.player-rename-input:focus,
+.player-add input:focus {
+  border-color: #7ed7ff;
+}
+
+.player-delete-warning {
+  color: #ffb3aa;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.player-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: min(100%, 480px);
+  margin-bottom: 8px;
+}
+
+.player-add__button {
+  min-height: 42px;
+  padding: 9px 20px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.player-error {
+  min-height: 24px;
+  margin-bottom: 10px;
+  color: #ff998d;
+  font-size: 12px;
+}
+
+.stats-panel {
+  width: min(100%, 560px);
+  max-height: 62vh;
+  margin: 8px 0 18px;
+  padding: 15px;
+  overflow-y: auto;
+  border: 1px solid #2b3742;
+  border-radius: 12px;
+  background: rgb(13 18 24 / 78%);
+  text-align: left;
+}
+
+.stats-panel h3 {
+  margin: 17px 0 8px;
+  color: #93a3b0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.stats-summary {
+  color: var(--led);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.stats-row,
+.stats-recent-row,
+.stats-empty {
+  padding: 8px 0;
+  border-bottom: 1px solid #26313c;
+  color: #c6d2dc;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.stats-recent-row:last-child,
+.stats-row:last-child {
+  border-bottom: 0;
+}
+
+.result-record {
+  min-height: 22px;
+  margin: -14px 0 18px;
+  color: #b9d9c6;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .final {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 44px;
@@ -430,6 +640,10 @@ h2 {
     padding-inline: 7px;
   }
 
+  #hudPlayerName {
+    max-width: 62px;
+  }
+
   h1 {
     font-size: 46px;
   }
@@ -443,6 +657,16 @@ h2 {
     min-width: 0;
     flex: 1;
     padding: 11px 7px;
+  }
+
+  .player-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 5px;
+    padding-inline: 2px;
+  }
+
+  .player-action {
+    padding-inline: 9px;
   }
 }
 

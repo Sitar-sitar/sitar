@@ -33,6 +33,8 @@ for (const sourcePath of [
   "src/types.ts",
   "src/physics.ts",
   "src/rules.ts",
+  "src/stats.ts",
+  "src/storage.ts",
   "src/game.ts",
   "src/input.ts",
   "src/render.ts",

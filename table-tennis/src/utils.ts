@@ -48,3 +48,34 @@ export function paddleScreenRadius(width: number, height: number): number {
     PADDLE_SIZE_MAX,
   );
 }
+
+export function formatUuidV4(bytes: ArrayLike<number>): string {
+  if (bytes.length < 16) {
+    throw new Error("UUIDには16バイトが必要です。");
+  }
+
+  const values = Array.from(
+    { length: 16 },
+    (_, index) => bytes[index]! & 0xff,
+  );
+  values[6] = (values[6]! & 0x0f) | 0x40;
+  values[8] = (values[8]! & 0x3f) | 0x80;
+
+  const hex = values.map((value) => value.toString(16).padStart(2, "0"));
+  return [
+    hex.slice(0, 4).join(""),
+    hex.slice(4, 6).join(""),
+    hex.slice(6, 8).join(""),
+    hex.slice(8, 10).join(""),
+    hex.slice(10, 16).join(""),
+  ].join("-");
+}
+
+export function normalizePlayerName(raw: string): string {
+  const name = raw.trim();
+  const length = [...name].length;
+  if (length < 1 || length > 12) {
+    throw new Error("名前は1〜12文字で入力してください。");
+  }
+  return name;
+}
