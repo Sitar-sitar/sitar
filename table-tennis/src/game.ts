@@ -34,6 +34,7 @@ import {
   chooseWeightedServe,
   isGameOver,
   opponentOf,
+  resolveMiss,
   rotateServerAfterPoint,
 } from "./rules.ts";
 import type {
@@ -873,23 +874,21 @@ export class Game {
         this.feedback.bounce();
         this.judgeBounce();
       } else {
-        this.point(
-          this.ball.bounces >= 1
-            ? this.ball.hitter
-            : opponentOf(this.ball.hitter),
-          this.ball.bounces >= 1 ? "返せず" : "アウト",
+        const miss = resolveMiss(
+          this.ball.bounces,
+          this.ball.hitter,
         );
+        this.point(miss.winner, miss.reason);
         return;
       }
     }
 
     if (this.ball.y < FLOOR) {
-      this.point(
-        this.ball.bounces >= 1
-          ? this.ball.hitter
-          : opponentOf(this.ball.hitter),
-        this.ball.bounces >= 1 ? "返せず" : "アウト",
+      const miss = resolveMiss(
+        this.ball.bounces,
+        this.ball.hitter,
       );
+      this.point(miss.winner, miss.reason);
       return;
     }
 

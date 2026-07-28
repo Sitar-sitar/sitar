@@ -19,6 +19,7 @@ import {
   chooseWeightedServe,
   isGameOver,
   opponentOf,
+  resolveMiss,
   rotateServerAfterPoint,
 } from "../src/rules.ts";
 import type { BallVector, ServeType } from "../src/types.ts";
@@ -119,6 +120,21 @@ test("moveTowardは目標を越えない", () => {
   assert.equal(moveToward(0, 10, 3), 3);
   assert.equal(moveToward(0, 2, 3), 2);
   assert.equal(moveToward(0, -10, 3), -3);
+});
+
+test("バウンド有無で失点者と理由が決まる", () => {
+  assert.deepEqual(resolveMiss(1, "P"), {
+    winner: "P",
+    reason: "返せず",
+  });
+  assert.deepEqual(resolveMiss(0, "P"), {
+    winner: "A",
+    reason: "アウト",
+  });
+  assert.deepEqual(resolveMiss(0, "A"), {
+    winner: "P",
+    reason: "アウト",
+  });
 });
 
 test("通常時は2本、デュース時は1本でサーバー交代する", () => {
