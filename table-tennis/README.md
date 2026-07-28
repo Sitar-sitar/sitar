@@ -100,8 +100,10 @@ Pull Requestでは `.github/workflows/test-table-tennis.yml` が同じ全検証�
 ├── src/
 │   ├── main.ts
 │   ├── game.ts
+│   ├── ai.ts
 │   ├── physics.ts
 │   ├── rules.ts
+│   ├── utils.ts
 │   ├── input.ts
 │   ├── render.ts
 │   ├── ui.ts
@@ -122,6 +124,7 @@ Pull Requestでは `.github/workflows/test-table-tennis.yml` が同じ全検証�
 ├── tests/
 │   ├── app-contract.test.mjs
 │   ├── game-core.test.ts
+│   ├── opponent-ai.test.ts
 │   └── game-smoke.spec.js
 ├── icons/
 └── docs/
