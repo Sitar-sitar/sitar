@@ -1,19 +1,42 @@
 import {
+  AI_CHOP_MAX_Y,
+  AI_CHOP_SPIN_MAX,
+  AI_CONTACT_Y_MAX,
+  AI_CONTACT_Y_MIN,
+  AI_LOB_MAX_Y,
+  AI_SERVE_DELAY_MS,
+  AI_SMASH_MIN_Y,
   AZ,
+  CONTACT_PLANE_FAR,
+  CONTACT_PLANE_NEAR,
   FIXED_STEP,
   FLOOR,
   HL,
   HW,
   LEVELS,
+  LOB_MAX_Y,
+  MAX_SUBSTEPS,
   NET_H,
   NET_HW,
   PADDLE_LIMIT,
+  PLAYER_CONTACT_Y_MAX,
+  PLAYER_CONTACT_Y_MIN,
+  POINT_INTERVAL,
   P_REACH,
   P_SPEED,
   PLAYER_AIM_SPAN,
   PZ,
+  RESULT_DELAY_MS,
+  SERVE_BALL_Y,
+  SERVE_CONTACT_Y,
   SERVE_PROFILES,
+  SHOT_ORIGIN_Y_MIN,
   SHOTS,
+  SMASH_CHECK_INTERVAL,
+  SMASH_MIN_Y,
+  SMASH_REACH_MARGIN,
+  SWING_DECAY,
+  TRAIL_LENGTH,
 } from "./config.ts";
 import { Feedback } from "./feedback.ts";
 import { InputController } from "./input.ts";
@@ -254,19 +277,28 @@ export class Game {
     if (this.state.phase !== "title" && !this.state.paused) {
       this.accumulator += dt;
       let steps = 0;
-      while (this.accumulator >= FIXED_STEP && steps < 12) {
+      while (
+        this.accumulator >= FIXED_STEP &&
+        steps < MAX_SUBSTEPS
+      ) {
         this.tick(FIXED_STEP);
         this.accumulator -= FIXED_STEP;
         steps += 1;
       }
-      if (steps >= 12) {
+      if (steps >= MAX_SUBSTEPS) {
         this.accumulator = 0;
       }
     }
 
     this.ui.tickFlash(dt);
-    this.player.swing = Math.max(0, this.player.swing - dt * 6);
-    this.opponent.swing = Math.max(0, this.opponent.swing - dt * 6);
+    this.player.swing = Math.max(
+      0,
+      this.player.swing - dt * SWING_DECAY,
+    );
+    this.opponent.swing = Math.max(
+      0,
+      this.opponent.swing - dt * SWING_DECAY,
+    );
     this.renderer?.render();
   };
 
@@ -396,7 +428,7 @@ export class Game {
     this.ball.z = playerServes ? PZ + 6 : AZ - 6;
     this.player.z = PZ;
     this.opponent.z = AZ;
-    this.ball.y = 26;
+    this.ball.y = SERVE_BALL_Y;
     this.ball.vx = 0;
     this.ball.vy = 0;
     this.ball.vz = 0;
@@ -431,7 +463,7 @@ export class Game {
       ) {
         this.aiServe();
       }
-    }, 700);
+    }, AI_SERVE_DELAY_MS);
   }
 
   private aiServe(): void {
@@ -464,7 +496,11 @@ export class Game {
     side: number;
   } | null {
     const direction = who === "P" ? 1 : -1;
-    const from = { x: this.ball.x, y: 24, z: this.ball.z };
+    const from = {
+      x: this.ball.x,
+      y: SERVE_CONTACT_Y,
+      z: this.ball.z,
+    };
     const profile = SERVE_PROFILES[serveType];
     const side = profile.screenCurve;
     let solution = solveServe(
@@ -526,7 +562,11 @@ export class Game {
       return false;
     }
 
-    const from = { x: this.ball.x, y: 24, z: this.ball.z };
+    const from = {
+      x: this.ball.x,
+      y: SERVE_CONTACT_Y,
+      z: this.ball.z,
+    };
     const elevation =
       resolved.solution.elev + (this.random() * 2 - 1) * error;
     const azimuth =
@@ -616,8 +656,14 @@ export class Game {
 
   private clampPlane(z: number, direction: number): number {
     return direction < 0
-      ? Math.max(-178, Math.min(-62, z))
-      : Math.min(178, Math.max(62, z));
+      ? Math.max(
+          -CONTACT_PLANE_FAR,
+          Math.min(-CONTACT_PLANE_NEAR, z),
+        )
+      : Math.min(
+          CONTACT_PLANE_FAR,
+          Math.max(CONTACT_PLANE_NEAR, z),
+        );
   }
 
   private makeShot(
@@ -632,7 +678,7 @@ export class Game {
     const shot = SHOTS[type];
     const from = {
       x: this.ball.x,
-      y: Math.max(this.ball.y, -46),
+      y: Math.max(this.ball.y, SHOT_ORIGIN_Y_MIN),
       z: this.ball.z,
     };
     const targetZ =
@@ -792,8 +838,8 @@ export class Game {
     const level = this.state.levelConfig;
     if (
       Math.abs(this.ball.x - this.opponent.x) > level.reach ||
-      this.ball.y < -42 ||
-      this.ball.y > 105
+      this.ball.y < AI_CONTACT_Y_MIN ||
+      this.ball.y > AI_CONTACT_Y_MAX
     ) {
       return false;
     }
@@ -801,11 +847,17 @@ export class Game {
     const quality =
       1 - Math.abs(this.ball.x - this.opponent.x) / level.reach;
     let type: ShotId;
-    if (this.ball.y < -12) {
+    if (this.ball.y < AI_LOB_MAX_Y) {
       type = "LOB";
-    } else if (this.ball.y > 24 && this.random() < level.smash) {
+    } else if (
+      this.ball.y > AI_SMASH_MIN_Y &&
+      this.random() < level.smash
+    ) {
       type = "SMASH";
-    } else if (this.ball.spin < -0.35 && this.ball.y < 14) {
+    } else if (
+      this.ball.spin < AI_CHOP_SPIN_MAX &&
+      this.ball.y < AI_CHOP_MAX_Y
+    ) {
       type = this.random() < level.chop ? "CHOP" : "PUSH";
     } else if (this.random() < level.chop * 0.5) {
       type = "CHOP";
@@ -847,7 +899,7 @@ export class Game {
       y: this.ball.y,
       z: this.ball.z,
     });
-    if (this.trail.length > 9) {
+    if (this.trail.length > TRAIL_LENGTH) {
       this.trail.shift();
     }
 
@@ -913,7 +965,8 @@ export class Game {
       this.ball.vz < 0
     ) {
       if (this.simulationTime > this.smashCheck) {
-        this.smashCheck = this.simulationTime + 0.08;
+        this.smashCheck =
+          this.simulationTime + SMASH_CHECK_INTERVAL;
         const prediction = predictAt(
           this.ball,
           this.player.z,
@@ -922,8 +975,9 @@ export class Game {
         );
         this.smashable = Boolean(
           prediction &&
-            prediction.y > 26 &&
-            Math.abs(prediction.x - this.player.x) < P_REACH + 8,
+            prediction.y > SMASH_MIN_Y &&
+            Math.abs(prediction.x - this.player.x) <
+              P_REACH + SMASH_REACH_MARGIN,
         );
       }
     } else {
@@ -967,8 +1021,8 @@ export class Game {
       this.ball.hitter === "P" ||
       this.ball.bounces < 1 ||
       Math.abs(this.ball.x - this.player.x) > P_REACH ||
-      this.ball.y < -46 ||
-      this.ball.y > 108
+      this.ball.y < PLAYER_CONTACT_Y_MIN ||
+      this.ball.y > PLAYER_CONTACT_Y_MAX
     ) {
       return;
     }
@@ -981,9 +1035,12 @@ export class Game {
       const upward = -flick.vy;
       const downward = flick.vy;
       if (upward > 0.42 * flick.sp) {
-        if (this.ball.y < -8) {
+        if (this.ball.y < LOB_MAX_Y) {
           type = "LOB";
-        } else if (flick.sp > 3 && this.ball.y > 26) {
+        } else if (
+          flick.sp > 3 &&
+          this.ball.y > SMASH_MIN_Y
+        ) {
           type = "SMASH";
         } else {
           type = "DRIVE";
@@ -1030,7 +1087,7 @@ export class Game {
     this.mark = null;
     this.smashable = false;
     this.state.phase = "point";
-    this.state.pointTimer = 1.25;
+    this.state.pointTimer = POINT_INTERVAL;
     this.ui.flash(
       reason,
       winner === "P" ? "#7ee0a8" : "#ff8a6b",
@@ -1055,7 +1112,7 @@ export class Game {
           this.cancelServeTimer();
           this.ui.showResult(this.state);
         }
-      }, 1000);
+      }, RESULT_DELAY_MS);
     }
   }
 }
