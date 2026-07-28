@@ -31,6 +31,7 @@ import { Renderer } from "./render.ts";
 import {
   chooseWeightedServe,
   isGameOver,
+  opponentOf,
   rotateServerAfterPoint,
 } from "./rules.ts";
 import type {
@@ -858,10 +859,7 @@ export class Game {
         this.ball.spin *= 0.3;
         this.ball.side *= 0.3;
         this.feedback.net();
-        this.point(
-          this.ball.hitter === "P" ? "A" : "P",
-          "ネット",
-        );
+        this.point(opponentOf(this.ball.hitter), "ネット");
         return;
       }
     }
@@ -875,9 +873,7 @@ export class Game {
         this.point(
           this.ball.bounces >= 1
             ? this.ball.hitter
-            : this.ball.hitter === "P"
-              ? "A"
-              : "P",
+            : opponentOf(this.ball.hitter),
           this.ball.bounces >= 1 ? "返せず" : "アウト",
         );
         return;
@@ -888,9 +884,7 @@ export class Game {
       this.point(
         this.ball.bounces >= 1
           ? this.ball.hitter
-          : this.ball.hitter === "P"
-            ? "A"
-            : "P",
+          : opponentOf(this.ball.hitter),
         this.ball.bounces >= 1 ? "返せず" : "アウト",
       );
       return;
@@ -940,10 +934,7 @@ export class Game {
     const side: Side = this.ball.z < 0 ? "P" : "A";
     if (this.ball.serveStage === 1) {
       if (side !== this.ball.hitter) {
-        this.point(
-          this.ball.hitter === "P" ? "A" : "P",
-          "サーブフォルト",
-        );
+        this.point(opponentOf(this.ball.hitter), "サーブフォルト");
         return;
       }
       this.ball.serveStage = 2;
@@ -951,10 +942,7 @@ export class Game {
     }
     if (this.ball.serveStage === 2) {
       if (side === this.ball.hitter) {
-        this.point(
-          this.ball.hitter === "P" ? "A" : "P",
-          "サーブフォルト",
-        );
+        this.point(opponentOf(this.ball.hitter), "サーブフォルト");
         return;
       }
       this.ball.serveStage = 0;
@@ -963,10 +951,7 @@ export class Game {
     }
     if (this.ball.bounces === 0) {
       if (side === this.ball.hitter) {
-        this.point(
-          this.ball.hitter === "P" ? "A" : "P",
-          "自陣に落下",
-        );
+        this.point(opponentOf(this.ball.hitter), "自陣に落下");
         return;
       }
       this.ball.bounces = 1;

@@ -18,6 +18,7 @@ import {
 import {
   chooseWeightedServe,
   isGameOver,
+  opponentOf,
   rotateServerAfterPoint,
 } from "../src/rules.ts";
 import type { BallVector, ServeType } from "../src/types.ts";
@@ -106,6 +107,11 @@ test("AIサーブ重みは難易度ごとの境界を選べる", () => {
     ),
   );
   assert.deepEqual(midKinds, new Set(SERVE_TYPES));
+});
+
+test("相手サイドを反転できる", () => {
+  assert.equal(opponentOf("P"), "A");
+  assert.equal(opponentOf("A"), "P");
 });
 
 test("通常時は2本、デュース時は1本でサーバー交代する", () => {

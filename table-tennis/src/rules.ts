@@ -20,6 +20,10 @@ export function chooseWeightedServe(
   return "knuckle";
 }
 
+export function opponentOf(side: Side): Side {
+  return side === "P" ? "A" : "P";
+}
+
 export function rotateServerAfterPoint(
   server: Side,
   servedCount: number,
@@ -33,7 +37,7 @@ export function rotateServerAfterPoint(
     return { server, servedCount: nextCount };
   }
   return {
-    server: server === "P" ? "A" : "P",
+    server: opponentOf(server),
     servedCount: 0,
   };
 }
