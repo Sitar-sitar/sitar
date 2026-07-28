@@ -1,11 +1,6 @@
+import { OpponentAi } from "./ai.ts";
 import {
-  AI_CHOP_MAX_Y,
-  AI_CHOP_SPIN_MAX,
-  AI_CONTACT_Y_MAX,
-  AI_CONTACT_Y_MIN,
-  AI_LOB_MAX_Y,
   AI_SERVE_DELAY_MS,
-  AI_SMASH_MIN_Y,
   AZ,
   CONTACT_PLANE_FAR,
   CONTACT_PLANE_NEAR,
@@ -54,14 +49,12 @@ import {
 } from "./physics.ts";
 import { Renderer } from "./render.ts";
 import {
-  chooseWeightedServe,
   isGameOver,
   opponentOf,
   resolveMiss,
   rotateServerAfterPoint,
 } from "./rules.ts";
 import type {
-  AiState,
   BallState,
   BallVector,
   Flick,
@@ -120,17 +113,7 @@ export class Game {
     swingType: 0,
   };
 
-  private readonly opponent: AiState = {
-    x: 0,
-    tx: 0,
-    z: AZ,
-    swing: 0,
-    swingType: 0,
-    react: -1,
-    nextRefine: 0,
-    plan: null,
-  };
-
+  private readonly ai: OpponentAi;
   private readonly trail: Pick<BallVector, "x" | "y" | "z">[] = [];
   private mark: Mark | null = null;
   private smashable = false;
@@ -148,7 +131,9 @@ export class Game {
     private readonly ui: Ui,
     private readonly feedback: Feedback,
     private readonly random: () => number = Math.random,
-  ) {}
+  ) {
+    this.ai = new OpponentAi(random);
+  }
 
   public attach(input: InputController, renderer: Renderer): void {
     this.input = input;
@@ -212,7 +197,7 @@ export class Game {
       game: this.state,
       ball: this.ball,
       player: this.player,
-      opponent: this.opponent,
+      opponent: this.ai.state,
       trail: this.trail,
       mark: this.mark,
       smashable: this.smashable,
@@ -295,9 +280,9 @@ export class Game {
       0,
       this.player.swing - dt * SWING_DECAY,
     );
-    this.opponent.swing = Math.max(
+    this.ai.state.swing = Math.max(
       0,
-      this.opponent.swing - dt * SWING_DECAY,
+      this.ai.state.swing - dt * SWING_DECAY,
     );
     this.renderer?.render();
   };
@@ -310,7 +295,12 @@ export class Game {
       P_SPEED * dt,
     );
 
-    this.aiThink(dt);
+    this.ai.update(
+      dt,
+      this.simulationTime,
+      this.ball,
+      this.state.level,
+    );
     this.updatePhysics(dt);
 
     if (this.state.phase === "point") {
@@ -337,8 +327,7 @@ export class Game {
     this.state.phase = "serve";
     this.player.x = 0;
     this.player.tx = 0;
-    this.opponent.x = 0;
-    this.opponent.plan = null;
+    this.ai.reset();
     this.state.played += 1;
     this.ui.showGame();
     this.ui.updateHud(this.state);
@@ -424,10 +413,10 @@ export class Game {
     const playerServes = this.state.server === "P";
     this.ball.x = playerServes
       ? this.player.x * 0.5
-      : this.opponent.x * 0.5;
+      : this.ai.state.x * 0.5;
     this.ball.z = playerServes ? PZ + 6 : AZ - 6;
     this.player.z = PZ;
-    this.opponent.z = AZ;
+    this.ai.state.z = AZ;
     this.ball.y = SERVE_BALL_Y;
     this.ball.vx = 0;
     this.ball.vy = 0;
@@ -467,18 +456,15 @@ export class Game {
   }
 
   private aiServe(): void {
-    const serveType = chooseWeightedServe(this.state.level, this.random);
-    const aim =
-      (this.random() * 2 - 1) *
-      HW *
-      0.7 *
-      this.state.levelConfig.spread;
+    const { serveType, aim } = this.ai.chooseServe(
+      this.state.level,
+    );
     if (
       !this.doServe(
         "A",
         aim,
         serveType,
-        this.state.levelConfig.serveErr,
+        LEVELS[this.state.level].serveErr,
       )
     ) {
       this.scheduleAiServe();
@@ -596,10 +582,14 @@ export class Game {
     if (who === "P") {
       this.player.swing = 1;
       this.player.swingType = 0;
-      this.opponent.z = this.contactPlane("A");
-      this.planAi();
+      this.ai.state.z = this.contactPlane("A");
+      this.ai.plan(
+        this.ball,
+        this.simulationTime,
+        this.state.level,
+      );
     } else {
-      this.opponent.swing = 1;
+      this.ai.state.swing = 1;
       this.player.z = this.contactPlane("P");
       this.planMark();
     }
@@ -755,7 +745,7 @@ export class Game {
         type === "CHOP" ? -1 : type === "SMASH" ? 1 : 0;
       this.state.rally += 1;
     } else {
-      this.opponent.swing = 1;
+      this.ai.state.swing = 1;
     }
 
     this.ui.flash(
@@ -768,34 +758,15 @@ export class Game {
       type === "SMASH" ? 1 : 0.7,
     );
     if (who === "P") {
-      this.opponent.z = this.contactPlane("A");
-      this.planAi();
+      this.ai.state.z = this.contactPlane("A");
+      this.ai.plan(
+        this.ball,
+        this.simulationTime,
+        this.state.level,
+      );
     } else {
       this.player.z = this.contactPlane("P");
       this.planMark();
-    }
-  }
-
-  private planAi(): void {
-    const level = this.state.levelConfig;
-    this.opponent.react = this.simulationTime + level.delay;
-    this.opponent.nextRefine = this.simulationTime + level.refine;
-    this.opponent.plan = null;
-    this.refineAi(level.perr);
-  }
-
-  private refineAi(error: number): void {
-    const prediction = predictAt(
-      this.ball,
-      this.opponent.z,
-      1,
-      FLOOR,
-    );
-    if (prediction) {
-      this.opponent.plan = {
-        x: prediction.x + (this.random() * 2 - 1) * error,
-        y: prediction.y,
-      };
     }
   }
 
@@ -808,81 +779,6 @@ export class Game {
       onTable(result.x, result.z)
         ? { x: result.x, z: result.z, t: 1 }
         : null;
-  }
-
-  private aiThink(dt: number): void {
-    const level = this.state.levelConfig;
-    if (
-      this.opponent.plan &&
-      this.simulationTime > this.opponent.react
-    ) {
-      if (this.simulationTime > this.opponent.nextRefine) {
-        this.opponent.nextRefine =
-          this.simulationTime + level.refine;
-        this.refineAi(level.perr * 0.45);
-      }
-      this.opponent.x = moveToward(
-        this.opponent.x,
-        this.opponent.plan.x,
-        level.speed * dt,
-      );
-    }
-    this.opponent.x = clamp(
-      this.opponent.x,
-      -PADDLE_LIMIT,
-      PADDLE_LIMIT,
-    );
-  }
-
-  private aiHit(): boolean {
-    const level = this.state.levelConfig;
-    if (
-      Math.abs(this.ball.x - this.opponent.x) > level.reach ||
-      this.ball.y < AI_CONTACT_Y_MIN ||
-      this.ball.y > AI_CONTACT_Y_MAX
-    ) {
-      return false;
-    }
-
-    const quality =
-      1 - Math.abs(this.ball.x - this.opponent.x) / level.reach;
-    let type: ShotId;
-    if (this.ball.y < AI_LOB_MAX_Y) {
-      type = "LOB";
-    } else if (
-      this.ball.y > AI_SMASH_MIN_Y &&
-      this.random() < level.smash
-    ) {
-      type = "SMASH";
-    } else if (
-      this.ball.spin < AI_CHOP_SPIN_MAX &&
-      this.ball.y < AI_CHOP_MAX_Y
-    ) {
-      type = this.random() < level.chop ? "CHOP" : "PUSH";
-    } else if (this.random() < level.chop * 0.5) {
-      type = "CHOP";
-    } else {
-      type = "DRIVE";
-    }
-
-    const aim =
-      this.state.level === "hard"
-        ? -Math.sign(this.player.x || 1) *
-          HW *
-          0.72 *
-          (0.6 + 0.4 * this.random())
-        : (this.random() * 2 - 1) * HW * 0.8 * level.spread;
-    const depth = level.depth * (0.82 + 0.3 * this.random());
-    const blunder = this.random() < level.miss ? 0.075 : 0;
-    this.makeShot(
-      "A",
-      type,
-      aim,
-      depth,
-      Math.max(0.25, quality),
-      blunder,
-    );
-    return true;
   }
 
   private updatePhysics(dt: number): void {
@@ -948,8 +844,8 @@ export class Game {
       this.playerContact();
     }
     if (
-      previousZ < this.opponent.z &&
-      this.ball.z >= this.opponent.z
+      previousZ < this.ai.state.z &&
+      this.ball.z >= this.ai.state.z
     ) {
       this.opponentContact();
     }
@@ -1069,7 +965,22 @@ export class Game {
     if (this.ball.hitter === "A" || this.ball.bounces < 1) {
       return;
     }
-    this.aiHit();
+    const decision = this.ai.decideShot(
+      this.ball,
+      this.player.x,
+      this.state.level,
+    );
+    if (!decision) {
+      return;
+    }
+    this.makeShot(
+      "A",
+      decision.type,
+      decision.aim,
+      decision.depth,
+      decision.quality,
+      decision.blunder,
+    );
   }
 
   private point(winner: Side, reason: string): void {

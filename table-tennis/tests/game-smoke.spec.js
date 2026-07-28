@@ -78,6 +78,22 @@ test("5種類のサーブを選択して実行できる", async ({ page }) => {
   await expect(page.locator("body")).toHaveAttribute("data-phase", "rally");
 });
 
+test("AIサーブから自動でラリーが始まる", async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.6;
+  });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+  await expect(page.locator("#serveControls")).toBeHidden();
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-phase",
+    "rally",
+    { timeout: 3000 },
+  );
+});
+
 test("320px幅でサーブ操作が画面内に収まる", async ({ page }) => {
   await page.addInitScript(() => {
     Math.random = () => 0;
