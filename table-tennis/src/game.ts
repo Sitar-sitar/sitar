@@ -66,7 +66,8 @@ import type {
   PaddleState,
   PlayerRecord,
   RenderScene,
-  ServeSolution,
+  ResolvedServe,
+  ServeLength,
   ServeType,
   ShotId,
   Side,
@@ -93,6 +94,7 @@ export class Game {
     vibe: true,
     played: 0,
     selectedServeType: "topspin",
+    selectedServeLength: "middle",
   };
 
   private readonly ball: BallState = {
@@ -243,6 +245,7 @@ export class Game {
       "P",
       aim,
       this.state.selectedServeType,
+      this.state.selectedServeLength,
       flick ? 0.012 : 0.014,
     );
   }
@@ -493,7 +496,7 @@ export class Game {
   }
 
   private aiServe(): void {
-    const { serveType, aim } = this.ai.chooseServe(
+    const { serveType, serveLength, aim } = this.ai.chooseServe(
       this.state.level,
     );
     if (
@@ -501,6 +504,7 @@ export class Game {
         "A",
         aim,
         serveType,
+        serveLength,
         LEVELS[this.state.level].serveErr,
       )
     ) {
@@ -512,76 +516,71 @@ export class Game {
     who: Side,
     aimX: number,
     serveType: ServeType,
-  ): {
-    solution: ServeSolution;
-    serveType: ServeType;
-    spin: number;
-    side: number;
-  } | null {
+    serveLength: ServeLength,
+  ): ResolvedServe | null {
     const direction = who === "P" ? 1 : -1;
     const from = {
       x: this.ball.x,
       y: SERVE_CONTACT_Y,
       z: this.ball.z,
     };
-    const profile = SERVE_PROFILES[serveType];
-    const side = profile.screenCurve;
-    let solution = solveServe(
-      from,
-      aimX,
-      profile.spin,
-      side,
-      direction,
-      SERVE_LENGTH_PROFILES.middle,
-    );
-    if (!solution.ok && aimX !== 0) {
-      solution = solveServe(
+
+    const tryServe = (
+      candidateType: ServeType,
+      candidateLength: ServeLength,
+      candidateAimX: number,
+    ): ResolvedServe | null => {
+      const profile = SERVE_PROFILES[candidateType];
+      const solution = solveServe(
         from,
-        0,
+        candidateAimX,
         profile.spin,
-        side,
+        profile.screenCurve,
         direction,
-        SERVE_LENGTH_PROFILES.middle,
+        SERVE_LENGTH_PROFILES[candidateLength],
       );
-    }
-    if (solution.ok) {
+      if (!solution.ok) {
+        return null;
+      }
       return {
         solution,
-        serveType,
+        serveType: candidateType,
+        serveLength: candidateLength,
+        aimX: candidateAimX,
         spin: profile.spin,
-        side,
+        side: profile.screenCurve,
       };
-    }
+    };
 
-    if (who === "A" && serveType !== "knuckle") {
-      const fallback = SERVE_PROFILES.knuckle;
-      solution = solveServe(
-        from,
-        0,
-        fallback.spin,
-        0,
-        direction,
-        SERVE_LENGTH_PROFILES.middle,
-      );
-      if (solution.ok) {
-        return {
-          solution,
-          serveType: "knuckle",
-          spin: fallback.spin,
-          side: 0,
-        };
-      }
+    let resolved = tryServe(serveType, serveLength, aimX);
+    if (!resolved && aimX !== 0) {
+      resolved = tryServe(serveType, serveLength, 0);
     }
-    return null;
+    if (!resolved) {
+      resolved = tryServe(serveType, "middle", aimX);
+    }
+    if (!resolved) {
+      resolved = tryServe(serveType, "middle", 0);
+    }
+    if (!resolved && who === "A") {
+      resolved = tryServe("knuckle", "middle", 0);
+    }
+    return resolved;
   }
 
   private doServe(
     who: Side,
     aimX: number,
     serveType: ServeType,
+    serveLength: ServeLength,
     error: number,
   ): boolean {
-    const resolved = this.findServeSolution(who, aimX, serveType);
+    const resolved = this.findServeSolution(
+      who,
+      aimX,
+      serveType,
+      serveLength,
+    );
     if (!resolved) {
       if (who === "P") {
         this.ui.flash(

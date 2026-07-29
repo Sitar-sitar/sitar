@@ -220,6 +220,27 @@ export const SERVE_LENGTH_PROFILES: Record<
   },
 };
 
+export const AI_SERVE_LENGTH_WEIGHTS: Record<
+  LevelId,
+  Readonly<Record<ServeLength, number>>
+> = {
+  easy: {
+    short: 5,
+    middle: 80,
+    long: 15,
+  },
+  mid: {
+    short: 25,
+    middle: 50,
+    long: 25,
+  },
+  hard: {
+    short: 40,
+    middle: 30,
+    long: 30,
+  },
+};
+
 export const AI_SERVE_WEIGHTS: Record<
   LevelId,
   Readonly<Record<ServeType, number>>

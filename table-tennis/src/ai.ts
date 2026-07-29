@@ -12,12 +12,16 @@ import {
   PADDLE_LIMIT,
 } from "./config.ts";
 import { predictAt } from "./physics.ts";
-import { chooseWeightedServe } from "./rules.ts";
+import {
+  chooseServeLength,
+  chooseWeightedServe,
+} from "./rules.ts";
 import type {
   AiState,
   BallState,
   BallVector,
   LevelId,
+  ServeLength,
   ServeType,
   ShotId,
 } from "./types.ts";
@@ -148,10 +152,15 @@ export class OpponentAi {
 
   public chooseServe(
     level: LevelId,
-  ): { serveType: ServeType; aim: number } {
+  ): {
+    serveType: ServeType;
+    serveLength: ServeLength;
+    aim: number;
+  } {
     const config = LEVELS[level];
     return {
       serveType: chooseWeightedServe(level, this.random),
+      serveLength: chooseServeLength(level, this.random),
       aim:
         (this.random() * 2 - 1) *
         HW *

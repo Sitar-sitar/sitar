@@ -1,6 +1,12 @@
-import { AI_SERVE_WEIGHTS, SERVE_TYPES } from "./config.ts";
+import {
+  AI_SERVE_LENGTH_WEIGHTS,
+  AI_SERVE_WEIGHTS,
+  SERVE_LENGTHS,
+  SERVE_TYPES,
+} from "./config.ts";
 import type {
   LevelId,
+  ServeLength,
   ServeType,
   ShotId,
   Side,
@@ -36,6 +42,25 @@ export function chooseWeightedServe(
     }
   }
   return "knuckle";
+}
+
+export function chooseServeLength(
+  level: LevelId,
+  random: () => number,
+): ServeLength {
+  const weights = AI_SERVE_LENGTH_WEIGHTS[level];
+  const total = SERVE_LENGTHS.reduce(
+    (sum, serveLength) => sum + weights[serveLength],
+    0,
+  );
+  let cursor = Math.min(0.999999999, Math.max(0, random())) * total;
+  for (const serveLength of SERVE_LENGTHS) {
+    cursor -= weights[serveLength];
+    if (cursor < 0) {
+      return serveLength;
+    }
+  }
+  return "middle";
 }
 
 export function opponentOf(side: Side): Side {

@@ -126,17 +126,18 @@ test("decideShotは難易度で狙いを変える", () => {
   }
 });
 
-test("chooseServeは乱数からサーブ種別と狙いを決める", () => {
-  const sequence = scriptedRandom([0.6, 0.6]);
+test("chooseServeは球種・長さ・狙いの順で乱数を使う", () => {
+  const sequence = scriptedRandom([0.6, 0.9, 0.6]);
   const ai = new OpponentAi(sequence.random);
   const serve = ai.chooseServe("mid");
 
   assert.equal(serve.serveType, "side-right");
+  assert.equal(serve.serveLength, "long");
   assertClose(
     serve.aim,
     (0.6 * 2 - 1) * HW * 0.7 * LEVELS.mid.spread,
   );
-  assert.equal(sequence.consumed(), 2);
+  assert.equal(sequence.consumed(), 3);
 });
 
 test("plan/update/resetは反応待ち・移動量・クランプを守る", () => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  AI_SERVE_LENGTH_WEIGHTS,
   AI_SERVE_WEIGHTS,
   AZ,
   PZ,
@@ -18,6 +19,7 @@ import {
   tableBounce,
 } from "../src/physics.ts";
 import {
+  chooseServeLength,
   chooseWeightedServe,
   isGameOver,
   opponentOf,
@@ -217,6 +219,34 @@ test("AIサーブ重みは難易度ごとの境界を選べる", () => {
     ),
   );
   assert.deepEqual(midKinds, new Set(SERVE_TYPES));
+});
+
+test("AIサーブ長は難易度別重みで3種を1乱数で選べる", () => {
+  assert.deepEqual(AI_SERVE_LENGTH_WEIGHTS, {
+    easy: { short: 5, middle: 80, long: 15 },
+    mid: { short: 25, middle: 50, long: 25 },
+    hard: { short: 40, middle: 30, long: 30 },
+  });
+
+  const samples = {
+    easy: [0.01, 0.5, 0.9],
+    mid: [0.1, 0.5, 0.9],
+    hard: [0.1, 0.5, 0.8],
+  } as const;
+  for (const level of ["easy", "mid", "hard"] as const) {
+    const selected = new Set<ServeLength>();
+    for (const value of samples[level]) {
+      let consumed = 0;
+      selected.add(
+        chooseServeLength(level, () => {
+          consumed += 1;
+          return value;
+        }),
+      );
+      assert.equal(consumed, 1);
+    }
+    assert.deepEqual(selected, new Set(SERVE_LENGTHS));
+  }
 });
 
 test("相手サイドを反転できる", () => {

@@ -55,6 +55,15 @@ export interface ServeLengthProfile {
   aimScale: number;
 }
 
+export interface ResolvedServe {
+  solution: ServeSolution;
+  serveType: ServeType;
+  serveLength: ServeLength;
+  aimX: number;
+  spin: number;
+  side: number;
+}
+
 export interface BallVector {
   x: number;
   y: number;
@@ -105,6 +114,7 @@ export interface GameState {
   vibe: boolean;
   played: number;
   selectedServeType: ServeType;
+  selectedServeLength: ServeLength;
 }
 
 export interface Flick {
