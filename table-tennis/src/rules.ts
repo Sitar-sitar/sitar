@@ -1,5 +1,23 @@
 import { AI_SERVE_WEIGHTS, SERVE_TYPES } from "./config.ts";
-import type { LevelId, ServeType, Side } from "./types.ts";
+import type {
+  LevelId,
+  ServeType,
+  ShotId,
+  Side,
+} from "./types.ts";
+
+export function swingTypeOf(shot: ShotId): number {
+  switch (shot) {
+    case "DRIVE":
+    case "SMASH":
+      return 1;
+    case "CHOP":
+      return -1;
+    case "PUSH":
+    case "LOB":
+      return 0;
+  }
+}
 
 export function chooseWeightedServe(
   level: LevelId,

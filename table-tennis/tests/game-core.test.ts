@@ -21,6 +21,7 @@ import {
   opponentOf,
   resolveMiss,
   rotateServerAfterPoint,
+  swingTypeOf,
 } from "../src/rules.ts";
 import type { BallVector, ServeType } from "../src/types.ts";
 import {
@@ -238,6 +239,26 @@ test("ラケットの持ち手はスイング種別で逆向きに傾く", () =>
   assert.ok(paddleHandleAngle(1, -1) < base);
   assert.ok(paddleHandleAngle(1, 0) > base);
   assert.ok(paddleHandleAngle(1, 0) < paddleHandleAngle(1, 1));
+});
+
+test("swingTypeOfは全ショット種別を描画用スイングへ対応付ける", () => {
+  assert.equal(swingTypeOf("DRIVE"), 1);
+  assert.equal(swingTypeOf("SMASH"), 1);
+  assert.equal(swingTypeOf("CHOP"), -1);
+  assert.equal(swingTypeOf("PUSH"), 0);
+  assert.equal(swingTypeOf("LOB"), 0);
+});
+
+test("ドライブとスマッシュは振り上げ、ツッツキは振り下ろしになる", () => {
+  const base = Math.PI / 2;
+  const drive = paddleHandleAngle(1, swingTypeOf("DRIVE"));
+  const push = paddleHandleAngle(1, swingTypeOf("PUSH"));
+
+  assert.ok(drive > base);
+  assert.ok(paddleHandleAngle(1, swingTypeOf("SMASH")) > base);
+  assert.ok(paddleHandleAngle(1, swingTypeOf("CHOP")) < base);
+  assert.ok(push > base);
+  assert.ok(push < drive);
 });
 
 test("ラケットは持ち手を含めて画面下端に収まる", () => {

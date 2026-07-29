@@ -53,6 +53,7 @@ import {
   opponentOf,
   resolveMiss,
   rotateServerAfterPoint,
+  swingTypeOf,
 } from "./rules.ts";
 import type {
   BallState,
@@ -769,8 +770,7 @@ export class Game {
 
     if (who === "P") {
       this.player.swing = 1;
-      this.player.swingType =
-        type === "CHOP" ? -1 : type === "SMASH" ? 1 : 0;
+      this.player.swingType = swingTypeOf(type);
       this.state.rally += 1;
     } else {
       this.ai.state.swing = 1;
