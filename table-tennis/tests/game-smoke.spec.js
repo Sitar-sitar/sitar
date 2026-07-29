@@ -135,6 +135,49 @@ test("AIサーブから自動でラリーが始まる", async ({ page }) => {
   );
 });
 
+test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始まる", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.6;
+    window.__aiServeExecutions = 0;
+    const originalSetTimeout = window.setTimeout.bind(window);
+    window.setTimeout = (callback, delay, ...args) =>
+      originalSetTimeout(
+        (...callbackArgs) => {
+          if (delay === 700) {
+            window.__aiServeExecutions += 1;
+          }
+          if (typeof callback === "function") {
+            callback(...callbackArgs);
+          }
+        },
+        delay,
+        ...args,
+      );
+  });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+  await expect(page.locator("body")).toHaveAttribute("data-phase", "serve");
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pagehide"));
+    window.dispatchEvent(new PageTransitionEvent("pageshow"));
+  });
+
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-phase",
+    "rally",
+    { timeout: 3000 },
+  );
+  await page.waitForTimeout(900);
+  await expect(page.locator("body")).toHaveAttribute("data-phase", "rally");
+  await expect
+    .poll(() => page.evaluate(() => window.__aiServeExecutions))
+    .toBe(1);
+});
+
 test("320px幅でサーブ操作が画面内に収まる", async ({ page }) => {
   await page.addInitScript(() => {
     Math.random = () => 0;
