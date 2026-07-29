@@ -287,9 +287,11 @@ test("プレイヤーラケット半径は画面短辺と奥行きで決まる",
 });
 
 test("奥行き比は打点平面の範囲を0〜1へ写す", () => {
-  assert.equal(paddleDepthRatio(-62), 0);
+  assert.equal(paddleDepthRatio(-30), 0);
+  assert.equal(paddleDepthRatio(30), 0);
   assert.equal(paddleDepthRatio(-178), 1);
-  assert.equal(paddleDepthRatio(PZ), (152 - 62) / (178 - 62));
+  assert.equal(paddleDepthRatio(178), 1);
+  assert.equal(paddleDepthRatio(PZ), (152 - 30) / (178 - 30));
   assert.equal(paddleDepthRatio(-20), 0);
   assert.equal(paddleDepthRatio(-300), 1);
   // 符号に依存しない
