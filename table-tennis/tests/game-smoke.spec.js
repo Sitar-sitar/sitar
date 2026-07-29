@@ -54,11 +54,17 @@ test("PWA登録とオフライン用キャッシュを確認できる", async ({
   await expect(page.locator("#openStats")).toBeEnabled();
 
   if (browserName === "webkit") {
-    const cachedPaths = await page.evaluate(async () =>
-      (await (await caches.open("table-tennis-v3")).keys()).map(
+    const cachedPaths = await page.evaluate(async () => {
+      const cacheName = (await caches.keys()).find((key) =>
+        key.startsWith("table-tennis-"),
+      );
+      if (!cacheName) {
+        return [];
+      }
+      return (await (await caches.open(cacheName)).keys()).map(
         (request) => new URL(request.url).pathname,
-      ),
-    );
+      );
+    });
     expect(cachedPaths).toEqual(
       expect.arrayContaining([
         "/",
