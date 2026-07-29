@@ -112,11 +112,19 @@ test("AIサーブ重みは難易度ごとの境界を選べる", () => {
   assert.equal(chooseWeightedServe("easy", () => 0.01), "topspin");
   assert.equal(chooseWeightedServe("easy", () => 0.46), "side-left");
   assert.equal(chooseWeightedServe("easy", () => 0.56), "side-right");
-  assert.equal(chooseWeightedServe("easy", () => 0.99), "knuckle");
+  assert.equal(chooseWeightedServe("easy", () => 0.9), "knuckle");
+  assert.equal(
+    chooseWeightedServe("easy", () => 0.99),
+    "backspin-right",
+  );
   assert.equal(AI_SERVE_WEIGHTS.easy.backspin, 0);
+  assert.equal(AI_SERVE_WEIGHTS.easy["topspin-left"], 0);
+  assert.equal(AI_SERVE_WEIGHTS.easy["topspin-right"], 0);
+  assert.equal(AI_SERVE_WEIGHTS.easy["backspin-left"], 0);
 
   const midKinds = new Set(
-    [0.01, 0.26, 0.56, 0.71, 0.99].map((value) =>
+    [0.01, 0.19, 0.39, 0.51, 0.63, 0.75, 0.83, 0.91, 0.96].map(
+      (value) =>
       chooseWeightedServe("mid", () => value),
     ),
   );

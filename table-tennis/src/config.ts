@@ -116,6 +116,10 @@ export const SERVE_TYPES: readonly ServeType[] = [
   "side-left",
   "side-right",
   "knuckle",
+  "topspin-left",
+  "topspin-right",
+  "backspin-left",
+  "backspin-right",
 ];
 
 export const SERVE_PROFILES: Record<ServeType, ServeProfile> = {
@@ -149,6 +153,30 @@ export const SERVE_PROFILES: Record<ServeType, ServeProfile> = {
     spin: 0,
     screenCurve: 0,
   },
+  "topspin-left": {
+    id: "topspin-left",
+    label: "横上左",
+    spin: 0.45,
+    screenCurve: -0.42,
+  },
+  "topspin-right": {
+    id: "topspin-right",
+    label: "横上右",
+    spin: 0.45,
+    screenCurve: 0.42,
+  },
+  "backspin-left": {
+    id: "backspin-left",
+    label: "横下左",
+    spin: -0.3,
+    screenCurve: -0.26,
+  },
+  "backspin-right": {
+    id: "backspin-right",
+    label: "横下右",
+    spin: -0.3,
+    screenCurve: 0.26,
+  },
 };
 
 export const AI_SERVE_WEIGHTS: Record<
@@ -156,25 +184,37 @@ export const AI_SERVE_WEIGHTS: Record<
   Readonly<Record<ServeType, number>>
 > = {
   easy: {
-    topspin: 45,
+    topspin: 40,
     backspin: 0,
     "side-left": 10,
     "side-right": 10,
     knuckle: 35,
+    "topspin-left": 0,
+    "topspin-right": 0,
+    "backspin-left": 0,
+    "backspin-right": 5,
   },
   mid: {
-    topspin: 25,
-    backspin: 30,
-    "side-left": 15,
-    "side-right": 15,
-    knuckle: 15,
+    topspin: 18,
+    backspin: 20,
+    "side-left": 12,
+    "side-right": 12,
+    knuckle: 12,
+    "topspin-left": 8,
+    "topspin-right": 8,
+    "backspin-left": 5,
+    "backspin-right": 5,
   },
   hard: {
-    topspin: 20,
-    backspin: 25,
-    "side-left": 20,
-    "side-right": 20,
-    knuckle: 15,
+    topspin: 12,
+    backspin: 14,
+    "side-left": 10,
+    "side-right": 10,
+    knuckle: 8,
+    "topspin-left": 12,
+    "topspin-right": 12,
+    "backspin-left": 11,
+    "backspin-right": 11,
   },
 };
 

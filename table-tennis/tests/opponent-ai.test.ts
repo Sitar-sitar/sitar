@@ -131,7 +131,7 @@ test("chooseServeは乱数からサーブ種別と狙いを決める", () => {
   const ai = new OpponentAi(sequence.random);
   const serve = ai.chooseServe("mid");
 
-  assert.equal(serve.serveType, "side-left");
+  assert.equal(serve.serveType, "side-right");
   assertClose(
     serve.aim,
     (0.6 * 2 - 1) * HW * 0.7 * LEVELS.mid.spread,

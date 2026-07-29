@@ -7,7 +7,11 @@ export type ServeType =
   | "backspin"
   | "side-left"
   | "side-right"
-  | "knuckle";
+  | "knuckle"
+  | "topspin-left"
+  | "topspin-right"
+  | "backspin-left"
+  | "backspin-right";
 
 export interface LevelConfig {
   name: string;
