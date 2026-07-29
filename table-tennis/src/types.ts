@@ -31,7 +31,6 @@ export interface ShotConfig {
   dep: number;
   err: number;
   lab: string;
-  pw: number;
 }
 
 export interface ServeProfile {
@@ -56,7 +55,6 @@ export interface BallState extends BallVector {
   live: boolean;
   hitter: Side;
   bounces: number;
-  bSide: number;
   serveStage: number;
 }
 

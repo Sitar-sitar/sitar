@@ -31,7 +31,6 @@ export const SHOTS: Record<ShotId, ShotConfig> = {
     dep: 100,
     err: 0.017,
     lab: "ドライブ",
-    pw: 1,
   },
   SMASH: {
     sp: [1360, 1520],
@@ -39,7 +38,6 @@ export const SHOTS: Record<ShotId, ShotConfig> = {
     dep: 108,
     err: 0.012,
     lab: "スマッシュ！",
-    pw: 1.6,
   },
   PUSH: {
     sp: [430, 510],
@@ -47,7 +45,6 @@ export const SHOTS: Record<ShotId, ShotConfig> = {
     dep: 88,
     err: 0.015,
     lab: "押し出し",
-    pw: 0.6,
   },
   CHOP: {
     sp: [395, 470],
@@ -55,7 +52,6 @@ export const SHOTS: Record<ShotId, ShotConfig> = {
     dep: 96,
     err: 0.017,
     lab: "ツッツキ",
-    pw: 0.6,
   },
   LOB: {
     sp: [0, 0],
@@ -63,7 +59,6 @@ export const SHOTS: Record<ShotId, ShotConfig> = {
     dep: 118,
     err: 0.03,
     lab: "ロブ",
-    pw: 0.8,
   },
 };
 
@@ -204,7 +199,6 @@ export const PADDLE_SHADOW_GAP = 0.095;
 export const P_DEPTH_SPEED = 380;
 export const MAX_SUBSTEPS = 12;
 export const SWING_DECAY = 6;
-export const SERVE_BALL_Y = 26;
 export const AI_SERVE_DELAY_MS = 700;
 export const SERVE_CONTACT_Y = 24;
 export const CONTACT_PLANE_NEAR = 62;

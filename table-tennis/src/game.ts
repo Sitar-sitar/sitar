@@ -22,7 +22,6 @@ import {
   PLAYER_AIM_SPAN,
   PZ,
   RESULT_DELAY_MS,
-  SERVE_BALL_Y,
   SERVE_CONTACT_Y,
   SERVE_PROFILES,
   SHOT_ORIGIN_Y_MIN,
@@ -107,7 +106,6 @@ export class Game {
     live: false,
     hitter: "P",
     bounces: 0,
-    bSide: 0,
     serveStage: 0,
   };
 
@@ -260,6 +258,14 @@ export class Game {
   public handlePageShow(): void {
     this.lastFrame = 0;
     this.accumulator = 0;
+    if (
+      this.state.phase === "serve" &&
+      this.state.server === "A" &&
+      !this.state.paused &&
+      !this.ball.live
+    ) {
+      this.scheduleAiServe();
+    }
   }
 
   public handlePageHide(): void {
@@ -446,7 +452,7 @@ export class Game {
     this.player.viewZ = PZ;
     this.ai.state.z = AZ;
     this.ai.state.viewZ = AZ;
-    this.ball.y = SERVE_BALL_Y;
+    this.ball.y = SERVE_CONTACT_Y;
     this.ball.vx = 0;
     this.ball.vy = 0;
     this.ball.vz = 0;
@@ -470,6 +476,7 @@ export class Game {
   }
 
   private scheduleAiServe(): void {
+    this.cancelServeTimer();
     const generation = this.serveGeneration;
     this.serveTimer = window.setTimeout(() => {
       this.serveTimer = 0;

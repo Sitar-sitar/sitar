@@ -15,18 +15,16 @@ import type {
   ServeSolution,
 } from "./types.ts";
 
-const acceleration = { x: 0, y: 0, z: 0 };
-
 export function integrate(ball: BallVector, dt: number): void {
   const horizontalSpeed = Math.hypot(ball.vx, ball.vz);
-  acceleration.x = -DRAG * ball.vx + MAGS * ball.side * ball.vz;
-  acceleration.y =
+  const ax = -DRAG * ball.vx + MAGS * ball.side * ball.vz;
+  const ay =
     -G - DRAG * ball.vy - MAG * ball.spin * horizontalSpeed;
-  acceleration.z = -DRAG * ball.vz - MAGS * ball.side * ball.vx;
+  const az = -DRAG * ball.vz - MAGS * ball.side * ball.vx;
 
-  ball.vx += acceleration.x * dt;
-  ball.vy += acceleration.y * dt;
-  ball.vz += acceleration.z * dt;
+  ball.vx += ax * dt;
+  ball.vy += ay * dt;
+  ball.vz += az * dt;
   ball.x += ball.vx * dt;
   ball.y += ball.vy * dt;
   ball.z += ball.vz * dt;
