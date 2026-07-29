@@ -38,6 +38,7 @@ export class OpponentAi {
     x: 0,
     tx: 0,
     z: AZ,
+    viewZ: AZ,
     swing: 0,
     swingType: 0,
     react: -1,

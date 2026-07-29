@@ -59,6 +59,46 @@ for (const sourcePath of [
   await access(resolve(root, sourcePath));
 }
 
+const renderSource = await read("src/render.ts");
+const drawPlayerPaddle = /private drawPlayerPaddle\(\): void \{[\s\S]*?\n {2}\}/u
+  .exec(renderSource)?.[0];
+if (!drawPlayerPaddle) {
+  fail("src/render.ts の drawPlayerPaddle() を検出できません。");
+}
+if (!drawPlayerPaddle.includes("this.project(player.x, 0, player.z)")) {
+  fail(
+    "drawPlayerPaddle() は横位置を判定平面 player.z で投影してください。",
+  );
+}
+if (/project\([^)]*viewZ/u.test(drawPlayerPaddle)) {
+  fail(
+    "drawPlayerPaddle() は横位置の投影に viewZ を使わないでください。",
+  );
+}
+
+const gameSource = await read("src/game.ts");
+const startServe = /private startServe\(\): void \{[\s\S]*?\n {2}\}/u.exec(
+  gameSource,
+)?.[0];
+if (!startServe) {
+  fail("src/game.ts の startServe() を検出できません。");
+}
+if (!/this\.player\.viewZ = PZ;/u.test(startServe)) {
+  fail("startServe() は点間で player.viewZ を PZ へ戻してください。");
+}
+const tick = /private tick\(dt: number\): void \{[\s\S]*?\n {2}\}/u.exec(
+  gameSource,
+)?.[0];
+if (!tick) {
+  fail("src/game.ts の tick() を検出できません。");
+}
+if (!tick.includes("stepViewZ(")) {
+  fail("tick() は stepViewZ() で player.viewZ を追従させてください。");
+}
+if ((await read("src/ai.ts")).includes("stepViewZ")) {
+  fail("src/ai.ts は viewZ を追従させない設計です。");
+}
+
 const manifest = JSON.parse(await read("manifest.webmanifest"));
 for (const field of ["name", "short_name", "start_url", "display", "icons"]) {
   if (manifest[field] === undefined) {

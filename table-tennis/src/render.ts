@@ -5,10 +5,22 @@ import {
   HW,
   NET_H,
   NET_HW,
+  PADDLE_BLADE_SCALE,
+  PADDLE_HANDLE_INSET,
+  PADDLE_HANDLE_LENGTH,
+  PADDLE_HANDLE_WIDTH,
 } from "./config.ts";
 import { onTable } from "./physics.ts";
 import type { RenderScene, Viewport } from "./types.ts";
-import { paddleScreenRadius, paddleScreenY } from "./utils.ts";
+import {
+  clampPaddleScreenY,
+  paddleDepthRatio,
+  paddleHandleAngle,
+  paddleScreenRadius,
+  paddleScreenY,
+  paddleShadowY,
+  projectScale,
+} from "./utils.ts";
 
 interface ProjectedPoint {
   x: number;
@@ -104,8 +116,7 @@ export class Renderer {
   };
 
   private project(x: number, y: number, z: number): ProjectedPoint {
-    const depth = Math.max(24, z - this.camera.z);
-    const scale = this.camera.f / depth;
+    const scale = projectScale(this.camera.f, this.camera.z, z);
     return {
       x: this.camera.cx + (x - this.camera.x) * scale,
       y: this.camera.cy - (y - this.camera.y) * scale,
@@ -456,13 +467,22 @@ export class Renderer {
     const racketX = opponent.x + 12 + swing * 16;
     const racketY = FLOOR + 44 + swing * 10;
     const hand = this.project(racketX, racketY, opponent.z + 10);
+    const armRoot = {
+      x: hip.x + torsoWidth * 0.4,
+      y: head.y + 16 * scale,
+    };
     context.strokeStyle = "#e9edf1";
     context.lineWidth = Math.max(2.5, 6 * scale);
     context.beginPath();
-    context.moveTo(hip.x + torsoWidth * 0.4, head.y + 16 * scale);
+    context.moveTo(armRoot.x, armRoot.y);
     context.lineTo(hand.x, hand.y);
     context.stroke();
-    this.paddle(hand, scale, "#b03a2e");
+    this.paddle(
+      hand,
+      scale,
+      "#b03a2e",
+      Math.atan2(armRoot.y - hand.y, armRoot.x - hand.x),
+    );
   }
 
   private roundRect(
@@ -496,9 +516,38 @@ export class Renderer {
     point: ProjectedPoint,
     scale: number,
     color: string,
+    angle: number,
   ): void {
     const context = this.context;
-    const radius = Math.max(6, 9.6 * scale * 1.25);
+    const radius = Math.max(6, 9.6 * scale * PADDLE_BLADE_SCALE);
+    const handleWidth = radius * PADDLE_HANDLE_WIDTH;
+    const handleLength = radius * PADDLE_HANDLE_LENGTH;
+    const handleStart = radius * PADDLE_HANDLE_INSET;
+
+    context.save();
+    context.translate(point.x, point.y);
+    context.rotate(angle);
+    this.roundRect(
+      handleStart,
+      -handleWidth / 2,
+      handleLength,
+      handleWidth,
+      handleWidth * 0.35,
+    );
+    context.fillStyle = "#7a4a24";
+    context.fill();
+    context.lineWidth = Math.max(1, radius * 0.1);
+    context.strokeStyle = "rgba(0,0,0,.35)";
+    context.stroke();
+    context.fillStyle = "rgba(255,255,255,.12)";
+    context.fillRect(
+      handleStart + handleLength * 0.55,
+      -handleWidth / 2,
+      handleLength * 0.3,
+      handleWidth,
+    );
+    context.restore();
+
     context.save();
     context.beginPath();
     context.ellipse(
@@ -536,10 +585,15 @@ export class Renderer {
     const context = this.context;
     const swing =
       player.swing > 0 ? Math.sin(player.swing * Math.PI) : 0;
-    const projected = this.project(player.x, 0, player.z);
-    const x = projected.x;
-    const y = paddleScreenY(this.height, swing, player.swingType);
-    const radius = paddleScreenRadius(this.width, this.height);
+    // 横位置は打球判定と同じ平面 player.z で投影する（viewZ を使わない）。
+    const x = this.project(player.x, 0, player.z).x;
+    const depth = paddleDepthRatio(player.viewZ);
+    const radius = paddleScreenRadius(this.width, this.height, depth);
+    const y = clampPaddleScreenY(
+      paddleScreenY(this.height, swing, player.swingType, depth),
+      this.height,
+      radius,
+    );
 
     const shadowAlpha = 0.28 - swing * 0.16;
     const shadowRadiusX = radius * (0.9 - swing * 0.2);
@@ -547,7 +601,7 @@ export class Renderer {
     context.beginPath();
     context.ellipse(
       x,
-      this.height * 0.955,
+      paddleShadowY(this.height, depth),
       shadowRadiusX,
       radius * 0.28,
       0,
@@ -568,7 +622,12 @@ export class Renderer {
       context.lineWidth = 5;
       context.stroke();
     }
-    this.paddle({ x, y, s: 1 }, radius / 9.6, "#cb4335");
+    this.paddle(
+      { x, y, s: 1 },
+      radius / 9.6,
+      "#cb4335",
+      paddleHandleAngle(swing, player.swingType),
+    );
   }
 
   private drawBall(): void {

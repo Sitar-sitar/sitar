@@ -24,9 +24,16 @@ import {
 } from "../src/rules.ts";
 import type { BallVector, ServeType } from "../src/types.ts";
 import {
+  clampPaddleScreenY,
   moveToward,
+  paddleBottomExtent,
+  paddleDepthRatio,
+  paddleHandleAngle,
   paddleScreenRadius,
   paddleScreenY,
+  paddleShadowY,
+  projectScale,
+  stepViewZ,
 } from "../src/utils.ts";
 
 function traceServe(
@@ -130,16 +137,131 @@ test("プレイヤーラケットの縦位置は画面下部を基準にスイ�
   const height = 1_000;
   const baseY = height * 0.86;
 
-  assert.equal(paddleScreenY(height, 0, 1), baseY);
-  assert.ok(paddleScreenY(height, 1, 1) < baseY);
-  assert.ok(paddleScreenY(height, 1, -1) > baseY);
-  assert.ok(paddleScreenY(height, 1, 0) < baseY);
+  assert.equal(paddleScreenY(height, 0, 1, 1), baseY);
+  assert.ok(paddleScreenY(height, 1, 1, 1) < baseY);
+  assert.ok(paddleScreenY(height, 1, -1, 1) > baseY);
+  assert.ok(paddleScreenY(height, 1, 0, 1) < baseY);
+
+  // 奥（depth=0）ほど上へ寄り、スイングのオフセットは同じ向きに効く
+  const deepBaseY = height * 0.74;
+  assert.equal(paddleScreenY(height, 0, 1, 0), deepBaseY);
+  assert.ok(paddleScreenY(height, 1, 1, 0) < deepBaseY);
+  assert.ok(paddleScreenY(height, 1, -1, 0) > deepBaseY);
 });
 
-test("プレイヤーラケット半径は画面短辺を基準に上下限へ収まる", () => {
-  assert.equal(paddleScreenRadius(320, 240), 18);
-  assert.equal(paddleScreenRadius(2_000, 1_500), 46);
-  assert.equal(paddleScreenRadius(800, 600), 33);
+test("プレイヤーラケット半径は画面短辺と奥行きで決まる", () => {
+  assert.equal(paddleScreenRadius(320, 240, 1), 18);
+  assert.equal(paddleScreenRadius(2_000, 1_500, 1), 46);
+  assert.equal(paddleScreenRadius(800, 600, 1), 33);
+
+  // 奥では70%へ縮む。下限に貼り付く小画面でも縮小が効く
+  assert.equal(paddleScreenRadius(800, 600, 0), 33 * 0.7);
+  assert.equal(paddleScreenRadius(320, 240, 0), 18 * 0.7);
+});
+
+test("奥行き比は打点平面の範囲を0〜1へ写す", () => {
+  assert.equal(paddleDepthRatio(-62), 0);
+  assert.equal(paddleDepthRatio(-178), 1);
+  assert.equal(paddleDepthRatio(PZ), (152 - 62) / (178 - 62));
+  assert.equal(paddleDepthRatio(-20), 0);
+  assert.equal(paddleDepthRatio(-300), 1);
+  // 符号に依存しない
+  assert.equal(paddleDepthRatio(152), paddleDepthRatio(PZ));
+});
+
+test("影はラケットの下にあり奥ほど近づく", () => {
+  const height = 1_000;
+
+  for (const depth of [0, 0.5, 1]) {
+    assert.ok(
+      paddleShadowY(height, depth) > paddleScreenY(height, 0, 0, depth),
+    );
+  }
+  const nearGap =
+    paddleShadowY(height, 1) - paddleScreenY(height, 0, 0, 1);
+  const farGap =
+    paddleShadowY(height, 0) - paddleScreenY(height, 0, 0, 0);
+  assert.ok(farGap < nearGap);
+});
+
+test("同じ奥行きならボールとラケットの画面上Xが一致する", () => {
+  // 320x568相当のカメラ設定
+  const focal = 416;
+  const cameraZ = -330;
+  const contactZ = -178;
+  const worldX = 104;
+
+  // 打球成立時、ボールとラケットは同じ平面 z を通るので倍率が等しい
+  assert.equal(
+    projectScale(focal, cameraZ, contactZ),
+    projectScale(focal, cameraZ, contactZ),
+  );
+  const paddleX = worldX * projectScale(focal, cameraZ, contactZ);
+  const ballX = worldX * projectScale(focal, cameraZ, contactZ);
+  assert.equal(paddleX, ballX);
+
+  // 追従中の viewZ で投影すると画面上Xがずれる（横位置に使えない根拠）
+  const lagged = worldX * projectScale(focal, cameraZ, PZ);
+  const deep = worldX * projectScale(focal, cameraZ, -62);
+  assert.ok(Math.abs(paddleX - lagged) > 41);
+  assert.ok(Math.abs(paddleX - deep) > 123);
+});
+
+test("viewZは目標へ滑らかに追従し越えない", () => {
+  const dt = 1 / 240;
+  const step = 380 * dt;
+
+  // 1ステップの移動量は上限を超えない
+  assert.equal(stepViewZ(-152, -178, dt), -152 - step);
+  assert.equal(stepViewZ(-152, -62, dt), -152 + step);
+  // 目標を越えない
+  assert.equal(stepViewZ(-152, -152.5, dt), -152.5);
+  // 到達後は変わらない
+  assert.equal(stepViewZ(-178, -178, dt), -178);
+  // dt=0では動かない
+  assert.equal(stepViewZ(-152, -178, 0), -152);
+
+  // 複数ステップで到達する（最大移動幅116を約0.31秒）
+  let viewZ = -62;
+  for (let index = 0; index < 240 * 0.31; index += 1) {
+    viewZ = stepViewZ(viewZ, -178, dt);
+  }
+  assert.equal(viewZ, -178);
+});
+
+test("ラケットの持ち手はスイング種別で逆向きに傾く", () => {
+  const base = Math.PI / 2;
+
+  assert.equal(paddleHandleAngle(0, 1), base);
+  assert.equal(paddleHandleAngle(0, -1), base);
+  assert.ok(paddleHandleAngle(1, 1) > base);
+  assert.ok(paddleHandleAngle(1, -1) < base);
+  assert.ok(paddleHandleAngle(1, 0) > base);
+  assert.ok(paddleHandleAngle(1, 0) < paddleHandleAngle(1, 1));
+});
+
+test("ラケットは持ち手を含めて画面下端に収まる", () => {
+  const radius = 18;
+  const extent = paddleBottomExtent(radius);
+
+  // 320x240（横向き・最小ビューポート）は制限が必要になる
+  assert.ok(240 * 0.86 + extent > 240);
+  assert.equal(
+    clampPaddleScreenY(240 * 0.86, 240, radius),
+    240 - extent,
+  );
+  // ツッツキで下がった位置も同じ上限に収まる
+  assert.equal(
+    clampPaddleScreenY(240 * 0.86 + 240 * 0.045, 240, radius),
+    240 - extent,
+  );
+  // 影の下端も画面内に収まる
+  assert.ok(240 * 0.955 + radius * 0.28 <= 240);
+  // 320x568（縦向き）では制限が働かない
+  assert.equal(
+    clampPaddleScreenY(568 * 0.86, 568, radius),
+    568 * 0.86,
+  );
 });
 
 test("バウンド有無で失点者と理由が決まる", () => {

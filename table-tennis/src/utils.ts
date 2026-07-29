@@ -1,6 +1,17 @@
 import {
+  CONTACT_PLANE_FAR,
+  CONTACT_PLANE_NEAR,
+  P_DEPTH_SPEED,
+  PADDLE_BLADE_SCALE,
+  PADDLE_DEPTH_RISE,
+  PADDLE_DEPTH_SHRINK,
+  PADDLE_EDGE_MARGIN,
+  PADDLE_HANDLE_INSET,
+  PADDLE_HANDLE_LENGTH,
+  PADDLE_HANDLE_TILT,
   PADDLE_SCREEN_SIZE,
   PADDLE_SCREEN_Y,
+  PADDLE_SHADOW_GAP,
   PADDLE_SIZE_MAX,
   PADDLE_SIZE_MIN,
   PADDLE_SWING_DROP,
@@ -23,12 +34,46 @@ export function moveToward(
     : current + Math.sign(distance) * maxDelta;
 }
 
+export function projectScale(
+  focal: number,
+  cameraZ: number,
+  z: number,
+): number {
+  return focal / Math.max(24, z - cameraZ);
+}
+
+export function paddleDepthRatio(z: number): number {
+  return clamp(
+    (Math.abs(z) - CONTACT_PLANE_NEAR) /
+      (CONTACT_PLANE_FAR - CONTACT_PLANE_NEAR),
+    0,
+    1,
+  );
+}
+
+export function stepViewZ(
+  viewZ: number,
+  z: number,
+  dt: number,
+): number {
+  return moveToward(viewZ, z, P_DEPTH_SPEED * Math.max(0, dt));
+}
+
+function paddleDepthBaseY(height: number, depth: number): number {
+  return height * (PADDLE_SCREEN_Y - PADDLE_DEPTH_RISE * (1 - depth));
+}
+
+function paddleDepthScale(depth: number): number {
+  return 1 - PADDLE_DEPTH_SHRINK * (1 - depth);
+}
+
 export function paddleScreenY(
   height: number,
   swing: number,
   swingType: number,
+  depth: number,
 ): number {
-  const baseY = height * PADDLE_SCREEN_Y;
+  const baseY = paddleDepthBaseY(height, depth);
   if (swing <= 0) {
     return baseY;
   }
@@ -41,12 +86,59 @@ export function paddleScreenY(
   return baseY - height * PADDLE_SWING_PUSH * swing;
 }
 
-export function paddleScreenRadius(width: number, height: number): number {
-  return clamp(
-    Math.min(width, height) * PADDLE_SCREEN_SIZE,
-    PADDLE_SIZE_MIN,
-    PADDLE_SIZE_MAX,
+export function paddleScreenRadius(
+  width: number,
+  height: number,
+  depth: number,
+): number {
+  return (
+    clamp(
+      Math.min(width, height) * PADDLE_SCREEN_SIZE,
+      PADDLE_SIZE_MIN,
+      PADDLE_SIZE_MAX,
+    ) * paddleDepthScale(depth)
   );
+}
+
+export function paddleShadowY(height: number, depth: number): number {
+  return (
+    paddleDepthBaseY(height, depth) +
+    height * PADDLE_SHADOW_GAP * paddleDepthScale(depth)
+  );
+}
+
+export function paddleHandleAngle(
+  swing: number,
+  swingType: number,
+): number {
+  const base = Math.PI / 2;
+  if (swing <= 0) {
+    return base;
+  }
+  if (swingType === 1) {
+    return base + PADDLE_HANDLE_TILT * swing;
+  }
+  if (swingType === -1) {
+    return base - PADDLE_HANDLE_TILT * 0.6 * swing;
+  }
+  return base + PADDLE_HANDLE_TILT * 0.35 * swing;
+}
+
+export function paddleBottomExtent(radius: number): number {
+  return (
+    radius *
+      PADDLE_BLADE_SCALE *
+      (PADDLE_HANDLE_INSET + PADDLE_HANDLE_LENGTH) +
+    PADDLE_EDGE_MARGIN
+  );
+}
+
+export function clampPaddleScreenY(
+  y: number,
+  height: number,
+  radius: number,
+): number {
+  return Math.min(y, height - paddleBottomExtent(radius));
 }
 
 export function formatUuidV4(bytes: ArrayLike<number>): string {

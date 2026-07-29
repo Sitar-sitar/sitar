@@ -64,6 +64,8 @@ export interface PaddleState {
   x: number;
   tx: number;
   z: number;
+  /** 描画専用の奥行き追従値。打球判定には使わない（判定は常に z）。 */
+  viewZ: number;
   swing: number;
   swingType: number;
 }

@@ -71,7 +71,7 @@ import type {
   Side,
 } from "./types.ts";
 import { Ui } from "./ui.ts";
-import { clamp, moveToward } from "./utils.ts";
+import { clamp, moveToward, stepViewZ } from "./utils.ts";
 
 export class Game {
   public onMatchEnd?: (result: MatchResult) => void;
@@ -114,6 +114,7 @@ export class Game {
     x: 0,
     tx: 0,
     z: PZ,
+    viewZ: PZ,
     swing: 0,
     swingType: 0,
   };
@@ -308,6 +309,11 @@ export class Game {
       this.player.tx,
       P_SPEED * dt,
     );
+    this.player.viewZ = stepViewZ(
+      this.player.viewZ,
+      this.player.z,
+      dt,
+    );
 
     this.ai.update(
       dt,
@@ -436,7 +442,9 @@ export class Game {
       : this.ai.state.x * 0.5;
     this.ball.z = playerServes ? PZ + 6 : AZ - 6;
     this.player.z = PZ;
+    this.player.viewZ = PZ;
     this.ai.state.z = AZ;
+    this.ai.state.viewZ = AZ;
     this.ball.y = SERVE_BALL_Y;
     this.ball.vx = 0;
     this.ball.vy = 0;
