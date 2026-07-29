@@ -209,6 +209,13 @@ body[data-server="A"] #hint {
   gap: 6px;
 }
 
+.serve-controls__lengths {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .serve-choice {
   min-width: 0;
   min-height: 44px;
@@ -676,7 +683,7 @@ h2 {
   }
 
   .serve-controls__grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   #hint {

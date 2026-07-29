@@ -185,6 +185,9 @@ export class Game {
       selectServe: (serveType) => {
         this.selectServe(serveType);
       },
+      selectServeLength: (serveLength) => {
+        this.selectServeLength(serveLength);
+      },
       toggleSound: () => {
         this.state.sound = !this.state.sound;
         this.feedback.initializeAudio();
@@ -387,6 +390,19 @@ export class Game {
       return;
     }
     this.state.selectedServeType = serveType;
+    this.ui.updateServeControls(this.state);
+    this.ui.updateHud(this.state);
+  }
+
+  private selectServeLength(serveLength: ServeLength): void {
+    if (
+      this.state.phase !== "serve" ||
+      this.state.server !== "P" ||
+      this.state.paused
+    ) {
+      return;
+    }
+    this.state.selectedServeLength = serveLength;
     this.ui.updateServeControls(this.state);
     this.ui.updateHud(this.state);
   }
@@ -618,9 +634,13 @@ export class Game {
     this.trail.length = 0;
     this.state.phase = "rally";
     this.state.rally = 1;
+    document.body.dataset.servedServeType = resolved.serveType;
+    document.body.dataset.servedServeLength = resolved.serveLength;
     this.feedback.hit(0.35);
     this.ui.flash(
-      `${SERVE_PROFILES[resolved.serveType].label}サーブ`,
+      `${SERVE_PROFILES[resolved.serveType].label}サーブ（${
+        SERVE_LENGTH_PROFILES[resolved.serveLength].label
+      }）`,
       "#9fb0bd",
       0.6,
     );

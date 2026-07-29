@@ -41,6 +41,50 @@ for (const elementId of [
   }
 }
 
+const configSource = await read("src/config.ts");
+
+function stringArray(name) {
+  const body = new RegExp(
+    `export const ${name}:[^=]+=\\s*\\[([\\s\\S]*?)\\];`,
+    "u",
+  ).exec(configSource)?.[1];
+  if (!body) {
+    fail(`src/config.ts の ${name} を検出できません。`);
+  }
+  return [...body.matchAll(/"([^"]+)"/gu)].map((match) => match[1]);
+}
+
+function attributeValues(attribute) {
+  return [
+    ...html.matchAll(
+      new RegExp(`\\b${attribute}="([^"]+)"`, "gu"),
+    ),
+  ].map((match) => match[1]);
+}
+
+function sameMembers(actual, expected) {
+  return (
+    actual.length === expected.length &&
+    [...actual].sort().join("\n") === [...expected].sort().join("\n")
+  );
+}
+
+const serveTypes = attributeValues("data-serve-type");
+const configuredServeTypes = stringArray("SERVE_TYPES");
+if (!sameMembers(serveTypes, configuredServeTypes)) {
+  fail(
+    "index.html の data-serve-type は SERVE_TYPES の9識別子と一致させてください。",
+  );
+}
+
+const serveLengths = attributeValues("data-serve-length");
+const configuredServeLengths = stringArray("SERVE_LENGTHS");
+if (!sameMembers(serveLengths, configuredServeLengths)) {
+  fail(
+    "index.html の data-serve-length は SERVE_LENGTHS の3識別子と一致させてください。",
+  );
+}
+
 for (const sourcePath of [
   "src/main.ts",
   "src/config.ts",

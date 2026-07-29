@@ -41,6 +41,7 @@
     data-phase="title"
     data-server="P"
     data-selected-serve-type="topspin"
+    data-selected-serve-length="middle"
     data-service-worker="./sw.js"
   >
     <canvas id="cv"></canvas>
@@ -72,11 +73,19 @@
     <section
       id="serveControls"
       class="serve-controls"
-      aria-label="サーブの種類"
+      aria-label="サーブの種類と長さ"
       hidden
     >
       <div class="serve-controls__label">サーブを選ぶ</div>
       <div class="serve-controls__grid">
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="topspin-left"
+          aria-pressed="false"
+        >
+          横上左
+        </button>
         <button
           class="serve-choice sel"
           type="button"
@@ -88,10 +97,10 @@
         <button
           class="serve-choice"
           type="button"
-          data-serve-type="backspin"
+          data-serve-type="topspin-right"
           aria-pressed="false"
         >
-          下回転
+          横上右
         </button>
         <button
           class="serve-choice"
@@ -104,6 +113,14 @@
         <button
           class="serve-choice"
           type="button"
+          data-serve-type="knuckle"
+          aria-pressed="false"
+        >
+          ナックル
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
           data-serve-type="side-right"
           aria-pressed="false"
         >
@@ -112,10 +129,52 @@
         <button
           class="serve-choice"
           type="button"
-          data-serve-type="knuckle"
+          data-serve-type="backspin-left"
           aria-pressed="false"
         >
-          ナックル
+          横下左
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="backspin"
+          aria-pressed="false"
+        >
+          下回転
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="backspin-right"
+          aria-pressed="false"
+        >
+          横下右
+        </button>
+      </div>
+      <div class="serve-controls__lengths" aria-label="サーブの長さ">
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-length="short"
+          aria-pressed="false"
+        >
+          短い
+        </button>
+        <button
+          class="serve-choice sel"
+          type="button"
+          data-serve-length="middle"
+          aria-pressed="true"
+        >
+          中
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-length="long"
+          aria-pressed="false"
+        >
+          長い
         </button>
       </div>
     </section>

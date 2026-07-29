@@ -1,4 +1,8 @@
-import { LEVELS, SERVE_TYPES } from "./config.ts";
+import {
+  LEVELS,
+  SERVE_LENGTHS,
+  SERVE_TYPES,
+} from "./config.ts";
 import {
   formatRecordLabel,
   formatResultRecordText,
@@ -10,6 +14,7 @@ import type {
   PlayerRecord,
   PlayerStats,
   ResultRecord,
+  ServeLength,
   ServeType,
   StatsPhase,
 } from "./types.ts";
@@ -23,6 +28,7 @@ interface UiHandlers {
   quit: () => void;
   selectLevel: (level: LevelId) => void;
   selectServe: (serveType: ServeType) => void;
+  selectServeLength: (serveLength: ServeLength) => void;
   toggleSound: () => void;
   toggleVibration: () => void;
 }
@@ -220,6 +226,20 @@ export class Ui {
         });
       });
 
+    document
+      .querySelectorAll<HTMLButtonElement>("[data-serve-length]")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          const serveLength = button.dataset.serveLength;
+          if (
+            serveLength &&
+            SERVE_LENGTHS.includes(serveLength as ServeLength)
+          ) {
+            handlers.selectServeLength(serveLength as ServeLength);
+          }
+        });
+      });
+
     for (const id of ["tgS", "tgS2"]) {
       requiredElement(id, HTMLButtonElement).addEventListener(
         "click",
@@ -244,6 +264,8 @@ export class Ui {
     document.body.dataset.phase = state.phase;
     document.body.dataset.server = state.server;
     document.body.dataset.selectedServeType = state.selectedServeType;
+    document.body.dataset.selectedServeLength =
+      state.selectedServeLength;
   }
 
   public updateLevelSelection(level: LevelId): void {
@@ -263,6 +285,15 @@ export class Ui {
       .forEach((button) => {
         const selected =
           button.dataset.serveType === state.selectedServeType;
+        button.disabled = !visible;
+        button.setAttribute("aria-pressed", String(selected));
+        button.classList.toggle("sel", selected);
+      });
+    document
+      .querySelectorAll<HTMLButtonElement>("[data-serve-length]")
+      .forEach((button) => {
+        const selected =
+          button.dataset.serveLength === state.selectedServeLength;
         button.disabled = !visible;
         button.setAttribute("aria-pressed", String(selected));
         button.classList.toggle("sel", selected);

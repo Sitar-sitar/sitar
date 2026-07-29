@@ -84,7 +84,7 @@ test("PWA登録とオフライン用キャッシュを確認できる", async ({
   await expect(page.locator("#openStats")).toBeEnabled();
 });
 
-test("5種類のサーブを選択して実行できる", async ({ page }) => {
+test("9種類のサーブを3×3で選択して実行できる", async ({ page }) => {
   await page.addInitScript(() => {
     Math.random = () => 0;
   });
@@ -94,12 +94,24 @@ test("5種類のサーブを選択して実行できる", async ({ page }) => {
   const controls = page.locator("#serveControls");
   await expect(controls).toBeVisible();
   const serveTypes = [
+    "topspin-left",
     "topspin",
-    "backspin",
+    "topspin-right",
     "side-left",
-    "side-right",
     "knuckle",
+    "side-right",
+    "backspin-left",
+    "backspin",
+    "backspin-right",
   ];
+  await expect(page.locator("[data-serve-type]")).toHaveCount(9);
+  expect(
+    await page
+      .locator("[data-serve-type]")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.dataset.serveType),
+      ),
+  ).toEqual(serveTypes);
   for (const serveType of serveTypes) {
     const button = page.locator(`[data-serve-type="${serveType}"]`);
     await button.click();
@@ -114,9 +126,60 @@ test("5種類のサーブを選択して実行できる", async ({ page }) => {
   );
 
   await page.locator("#cv").click({ position: { x: 100, y: 250 } });
-  await expect(page.locator("#flash")).toHaveText("ナックルサーブ");
+  await expect(page.locator("#flash")).toHaveText("ナックルサーブ（中）");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-served-serve-type",
+    "knuckle",
+  );
   await expect(controls).toBeHidden();
   await expect(page.locator("body")).toHaveAttribute("data-phase", "rally");
+});
+
+test("サーブ長3種を選択できポイントと再試合をまたいで保持する", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  const serveLengths = ["short", "middle", "long"];
+  for (const serveLength of serveLengths) {
+    const button = page.locator(
+      `[data-serve-length="${serveLength}"]`,
+    );
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+  }
+
+  await page.locator('[data-serve-length="short"]').click();
+  await page.locator("#cv").click({ position: { x: 100, y: 250 } });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-served-serve-length",
+    "short",
+  );
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-selected-serve-length",
+    "short",
+  );
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-phase",
+    "serve",
+    { timeout: 10_000 },
+  );
+  await expect(page.locator('[data-serve-length="short"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  await page.locator("#gear").click();
+  await page.locator("#quit").click();
+  await page.locator("#start").click();
+  await expect(page.locator('[data-serve-length="short"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 
 test("AIサーブから自動でラリーが始まる", async ({ page }) => {
@@ -178,11 +241,11 @@ test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始ま�
     .toBe(1);
 });
 
-test("320px幅でサーブ操作が画面内に収まる", async ({ page }) => {
+test("320×480でサーブ操作が画面内に収まる", async ({ page }) => {
   await page.addInitScript(() => {
     Math.random = () => 0;
   });
-  await page.setViewportSize({ width: 320, height: 568 });
+  await page.setViewportSize({ width: 320, height: 480 });
   await page.goto("/");
   await page.locator("#start").click();
 
@@ -193,11 +256,16 @@ test("320px幅でサーブ操作が画面内に収まる", async ({ page }) => {
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(320);
   expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.y + box.height).toBeLessThanOrEqual(568);
+  expect(box.y + box.height).toBeLessThanOrEqual(480);
 
-  const buttons = page.locator("[data-serve-type]");
-  await expect(buttons).toHaveCount(5);
-  for (const button of await buttons.all()) {
+  const typeButtons = page.locator("[data-serve-type]");
+  await expect(typeButtons).toHaveCount(9);
+  const lengthButtons = page.locator("[data-serve-length]");
+  await expect(lengthButtons).toHaveCount(3);
+  for (const button of await typeButtons.all()) {
+    await expect(button).toBeVisible();
+  }
+  for (const button of await lengthButtons.all()) {
     await expect(button).toBeVisible();
   }
 });
