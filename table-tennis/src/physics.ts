@@ -12,6 +12,7 @@ import {
 import type {
   BallVector,
   LandingResult,
+  ServeLengthProfile,
   ServeSolution,
 } from "./types.ts";
 
@@ -204,9 +205,11 @@ function serveTry(
   direction: number,
   speed: number,
   distance: number,
+  length: ServeLengthProfile,
 ): ServeSolution {
   const firstTargetZ = from.z + direction * distance;
-  const compensatedAimX = aimX * 0.35 - side * direction * 5;
+  const compensatedAimX =
+    aimX * length.aimScale - side * direction * 5;
   const angle = solveAngle(
     from,
     compensatedAimX,
@@ -252,12 +255,13 @@ export function solveServe(
   spin: number,
   side: number,
   direction: number,
+  length: ServeLengthProfile,
 ): ServeSolution {
-  const targetZ = direction * 70;
+  const targetZ = direction * length.targetZ;
   let best: ServeSolution | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
-  for (const distance of [82, 60]) {
+  for (const distance of length.distances) {
     for (let index = 0; index < 10; index += 1) {
       const candidate = serveTry(
         from,
@@ -265,8 +269,9 @@ export function solveServe(
         spin,
         side,
         direction,
-        300 + index * 66,
+        length.speedBase + index * length.speedStep,
         distance,
+        length,
       );
       const score =
         (candidate.ok ? 0 : 1000) + Math.abs(candidate.z2 - targetZ);

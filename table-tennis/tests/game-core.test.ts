@@ -5,6 +5,8 @@ import {
   AI_SERVE_WEIGHTS,
   AZ,
   PZ,
+  SERVE_LENGTH_PROFILES,
+  SERVE_LENGTHS,
   SERVE_PROFILES,
   SERVE_TYPES,
 } from "../src/config.ts";
@@ -23,7 +25,11 @@ import {
   rotateServerAfterPoint,
   swingTypeOf,
 } from "../src/rules.ts";
-import type { BallVector, ServeType } from "../src/types.ts";
+import type {
+  BallVector,
+  ServeLength,
+  ServeType,
+} from "../src/types.ts";
 import {
   clampPaddleScreenY,
   moveToward,
@@ -41,8 +47,10 @@ function traceServe(
   serveType: ServeType,
   direction: 1 | -1,
   aimX: number,
-): { firstX: number; secondX: number } {
+  serveLength: ServeLength = "middle",
+): { firstX: number; secondX: number; secondZ: number } {
   const profile = SERVE_PROFILES[serveType];
+  const length = SERVE_LENGTH_PROFILES[serveLength];
   const from = {
     x: 0,
     y: 24,
@@ -55,6 +63,7 @@ function traceServe(
     profile.spin,
     side,
     direction,
+    length,
   );
   assert.equal(
     solution.ok,
@@ -82,17 +91,96 @@ function traceServe(
   const second = simLand(afterFirst);
   assert.equal(second.net, false);
   assert.ok(second.z * direction > 0, "2バウンド目はレシーバー側");
-  return { firstX: first.x, secondX: second.x };
+  return {
+    firstX: first.x,
+    secondX: second.x,
+    secondZ: second.z,
+  };
 }
 
-test("5種類のサーブが両方向・代表3狙いで成立する", () => {
+const serveTraceCache = new Map<
+  string,
+  ReturnType<typeof traceServe>
+>();
+
+function cachedServeTrace(
+  serveType: ServeType,
+  direction: 1 | -1,
+  aimX: number,
+  serveLength: ServeLength,
+): ReturnType<typeof traceServe> {
+  const key = `${serveType}:${direction}:${aimX}:${serveLength}`;
+  const cached = serveTraceCache.get(key);
+  if (cached) {
+    return cached;
+  }
+  const trace = traceServe(serveType, direction, aimX, serveLength);
+  serveTraceCache.set(key, trace);
+  return trace;
+}
+
+test("9種類×3長さのサーブが両方向・代表3狙いで成立する", () => {
   for (const serveType of SERVE_TYPES) {
-    for (const direction of [1, -1] as const) {
-      for (const aimX of [-50, 0, 50]) {
-        traceServe(serveType, direction, aimX);
+    for (const serveLength of SERVE_LENGTHS) {
+      for (const direction of [1, -1] as const) {
+        for (const aimX of [-50, 0, 50]) {
+          cachedServeTrace(
+            serveType,
+            direction,
+            aimX,
+            serveLength,
+          );
+        }
       }
     }
   }
+});
+
+test("サーブの2バウンド目は長さ別帯に入り短い順になる", () => {
+  for (const serveType of SERVE_TYPES) {
+    for (const direction of [1, -1] as const) {
+      for (const aimX of [-50, 0, 50]) {
+        const short = Math.abs(
+          cachedServeTrace(serveType, direction, aimX, "short")
+            .secondZ,
+        );
+        const middle = Math.abs(
+          cachedServeTrace(serveType, direction, aimX, "middle")
+            .secondZ,
+        );
+        const long = Math.abs(
+          cachedServeTrace(serveType, direction, aimX, "long")
+            .secondZ,
+        );
+
+        assert.ok(short >= 20 && short <= 48);
+        assert.ok(middle >= 52 && middle <= 82);
+        assert.ok(long >= 104 && long <= 135);
+        assert.ok(short < middle);
+        assert.ok(middle < long);
+      }
+    }
+  }
+});
+
+test("サーブ長さプロファイルは中を現行値に保ち目標が単調増加する", () => {
+  assert.deepEqual(SERVE_LENGTH_PROFILES.middle, {
+    id: "middle",
+    label: "中",
+    targetZ: 70,
+    distances: [82, 60],
+    speedBase: 300,
+    speedStep: 66,
+    aimScale: 0.35,
+  });
+  assert.ok(
+    SERVE_LENGTH_PROFILES.short.targetZ <
+      SERVE_LENGTH_PROFILES.middle.targetZ,
+  );
+  assert.ok(
+    SERVE_LENGTH_PROFILES.middle.targetZ <
+      SERVE_LENGTH_PROFILES.long.targetZ,
+  );
 });
 
 test("横左と横右は画面上で逆方向へ曲がる", () => {

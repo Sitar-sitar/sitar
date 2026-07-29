@@ -12,6 +12,7 @@ export type ServeType =
   | "topspin-right"
   | "backspin-left"
   | "backspin-right";
+export type ServeLength = "short" | "middle" | "long";
 
 export interface LevelConfig {
   name: string;
@@ -42,6 +43,16 @@ export interface ServeProfile {
   label: string;
   spin: number;
   screenCurve: number;
+}
+
+export interface ServeLengthProfile {
+  id: ServeLength;
+  label: string;
+  targetZ: number;
+  distances: readonly number[];
+  speedBase: number;
+  speedStep: number;
+  aimScale: number;
 }
 
 export interface BallVector {

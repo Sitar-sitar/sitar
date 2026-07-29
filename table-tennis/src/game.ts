@@ -23,6 +23,7 @@ import {
   PZ,
   RESULT_DELAY_MS,
   SERVE_CONTACT_Y,
+  SERVE_LENGTH_PROFILES,
   SERVE_PROFILES,
   SHOT_ORIGIN_Y_MIN,
   SHOTS,
@@ -531,6 +532,7 @@ export class Game {
       profile.spin,
       side,
       direction,
+      SERVE_LENGTH_PROFILES.middle,
     );
     if (!solution.ok && aimX !== 0) {
       solution = solveServe(
@@ -539,6 +541,7 @@ export class Game {
         profile.spin,
         side,
         direction,
+        SERVE_LENGTH_PROFILES.middle,
       );
     }
     if (solution.ok) {
@@ -552,7 +555,14 @@ export class Game {
 
     if (who === "A" && serveType !== "knuckle") {
       const fallback = SERVE_PROFILES.knuckle;
-      solution = solveServe(from, 0, fallback.spin, 0, direction);
+      solution = solveServe(
+        from,
+        0,
+        fallback.spin,
+        0,
+        direction,
+        SERVE_LENGTH_PROFILES.middle,
+      );
       if (solution.ok) {
         return {
           solution,

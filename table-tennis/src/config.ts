@@ -1,6 +1,8 @@
 import type {
   LevelConfig,
   LevelId,
+  ServeLength,
+  ServeLengthProfile,
   ServeProfile,
   ServeType,
   ShotConfig,
@@ -176,6 +178,45 @@ export const SERVE_PROFILES: Record<ServeType, ServeProfile> = {
     label: "横下右",
     spin: -0.3,
     screenCurve: 0.26,
+  },
+};
+
+export const SERVE_LENGTHS: readonly ServeLength[] = [
+  "short",
+  "middle",
+  "long",
+];
+
+export const SERVE_LENGTH_PROFILES: Record<
+  ServeLength,
+  ServeLengthProfile
+> = {
+  short: {
+    id: "short",
+    label: "短い",
+    targetZ: 34,
+    distances: [124, 110],
+    speedBase: 160,
+    speedStep: 24,
+    aimScale: 0.5,
+  },
+  middle: {
+    id: "middle",
+    label: "中",
+    targetZ: 70,
+    distances: [82, 60],
+    speedBase: 300,
+    speedStep: 66,
+    aimScale: 0.35,
+  },
+  long: {
+    id: "long",
+    label: "長い",
+    targetZ: 124,
+    distances: [62, 50],
+    speedBase: 420,
+    speedStep: 70,
+    aimScale: 0.16,
   },
 };
 
