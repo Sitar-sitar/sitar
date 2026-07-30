@@ -8,12 +8,14 @@ import {
   MAGS,
   NET_H,
   NET_HW,
+  SHOTS,
 } from "./config.ts";
 import type {
   BallVector,
   LandingResult,
   ServeLengthProfile,
   ServeSolution,
+  ShotId,
 } from "./types.ts";
 
 export function integrate(ball: BallVector, dt: number): void {
@@ -312,6 +314,93 @@ export function ensureNetClear(
     elevation += 0.022 + margin;
   }
   return elevation;
+}
+
+export function solveShot(input: {
+  from: Pick<BallVector, "x" | "y" | "z">;
+  type: ShotId;
+  direction: number;
+  aimX: number;
+  depth: number;
+  contactQuality: number;
+  extraError: number;
+  ballY: number;
+  random: () => number;
+}): { vx: number; vy: number; vz: number; spin: number; side: number } {
+  const {
+    from,
+    type,
+    direction,
+    aimX,
+    depth,
+    contactQuality,
+    extraError,
+    ballY,
+    random,
+  } = input;
+  const shot = SHOTS[type];
+  const targetZ =
+    direction * Math.max(24, Math.min(HL - 14, depth));
+  const targetX = Math.max(-HW + 7, Math.min(HW - 7, aimX));
+  const side = (random() - 0.5) * 0.25;
+  const spin = shot.spin;
+  let elevation: number;
+  let azimuth: number;
+  let speed: number;
+
+  if (type === "LOB") {
+    const result = solveSpeed(
+      from,
+      targetX,
+      targetZ,
+      1.02,
+      spin,
+      side,
+    );
+    speed = result.speed;
+    azimuth = result.azim;
+    elevation = 1.02;
+  } else {
+    speed =
+      shot.sp[0] + random() * (shot.sp[1] - shot.sp[0]);
+    if (type === "SMASH") {
+      speed *=
+        0.86 +
+        0.14 * Math.min(1, Math.max(0, (ballY - 20) / 30));
+    }
+    const result = solveAngle(
+      from,
+      targetX,
+      targetZ,
+      speed,
+      spin,
+      side,
+    );
+    elevation = result.elev;
+    azimuth = result.azim;
+    if (!extraError && contactQuality > 0.3) {
+      elevation = ensureNetClear(
+        from,
+        elevation,
+        azimuth,
+        speed,
+        spin,
+        side,
+      );
+    }
+  }
+
+  const error =
+    shot.err + (1 - contactQuality) * 0.055 + extraError;
+  elevation += (random() * 2 - 1) * error;
+  azimuth += (random() * 2 - 1) * error * 1.5;
+  speed *= 1 + (random() * 2 - 1) * error * 1.6;
+
+  return {
+    ...launch(speed, elevation, azimuth),
+    spin,
+    side,
+  };
 }
 
 export function predictAt(

@@ -6,7 +6,6 @@ import {
   CONTACT_PLANE_NEAR,
   FIXED_STEP,
   FLOOR,
-  HL,
   HW,
   LEVELS,
   LOB_MAX_Y,
@@ -36,15 +35,13 @@ import {
 import { Feedback } from "./feedback.ts";
 import { InputController } from "./input.ts";
 import {
-  ensureNetClear,
   integrate,
   launch,
   onTable,
   predictAt,
   simLand,
-  solveAngle,
   solveServe,
-  solveSpeed,
+  solveShot,
   tableBounce,
 } from "./physics.ts";
 import { Renderer } from "./render.ts";
@@ -736,73 +733,30 @@ export class Game {
       y: Math.max(this.ball.y, SHOT_ORIGIN_Y_MIN),
       z: this.ball.z,
     };
-    const targetZ =
-      direction * Math.max(24, Math.min(HL - 14, depth));
-    const targetX = Math.max(-HW + 7, Math.min(HW - 7, aimX));
-    const side = (this.random() - 0.5) * 0.25;
-    const spin = shot.spin;
-    let elevation: number;
-    let azimuth: number;
-    let speed: number;
+    const solution = solveShot({
+      from,
+      type,
+      direction,
+      aimX,
+      depth,
+      contactQuality,
+      extraError,
+      ballY: this.ball.y,
+      random: this.random,
+    });
 
-    if (type === "LOB") {
-      const result = solveSpeed(
-        from,
-        targetX,
-        targetZ,
-        1.02,
-        spin,
-        side,
-      );
-      speed = result.speed;
-      azimuth = result.azim;
-      elevation = 1.02;
-    } else {
-      speed =
-        shot.sp[0] + this.random() * (shot.sp[1] - shot.sp[0]);
-      if (type === "SMASH") {
-        speed *=
-          0.86 +
-          0.14 * Math.min(1, Math.max(0, (this.ball.y - 20) / 30));
-      }
-      const result = solveAngle(
-        from,
-        targetX,
-        targetZ,
-        speed,
-        spin,
-        side,
-      );
-      elevation = result.elev;
-      azimuth = result.azim;
-      if (!extraError && contactQuality > 0.3) {
-        elevation = ensureNetClear(
-          from,
-          elevation,
-          azimuth,
-          speed,
-          spin,
-          side,
-        );
-      }
-    }
-
-    const error =
-      shot.err + (1 - contactQuality) * 0.055 + extraError;
-    elevation += (this.random() * 2 - 1) * error;
-    azimuth += (this.random() * 2 - 1) * error * 1.5;
-    speed *= 1 + (this.random() * 2 - 1) * error * 1.6;
-    const velocity = launch(speed, elevation, azimuth);
-
-    Object.assign(this.ball, from, velocity);
-    this.ball.spin = spin;
-    this.ball.side = side;
+    Object.assign(this.ball, from, solution);
     this.ball.hitter = who;
     this.ball.bounces = 0;
     this.ball.live = true;
     this.ball.serveStage = 0;
     this.trail.length = 0;
-    this.feedback.hit(Math.min(1, speed / 1500));
+    this.feedback.hit(
+      Math.min(
+        1,
+        Math.hypot(solution.vx, solution.vy, solution.vz) / 1500,
+      ),
+    );
 
     if (who === "P") {
       this.player.swing = 1;
