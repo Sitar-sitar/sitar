@@ -436,6 +436,34 @@ export function solveShot(input: {
   azimuth += (random() * 2 - 1) * error * 1.5;
   speed *= 1 + (random() * 2 - 1) * error * 1.6;
 
+  if (type === "STOP" && extraError === 0) {
+    const finalLanding = simLand({
+      ...from,
+      ...launch(speed, elevation, azimuth),
+      spin,
+      side,
+    });
+    const finalDepth = Math.abs(finalLanding.z);
+    if (
+      finalLanding.net ||
+      finalLanding.z * direction <= 0 ||
+      finalDepth < 18 ||
+      finalDepth > 46
+    ) {
+      const required = solveSpeed(
+        from,
+        targetX,
+        targetZ,
+        STOP_DISTANCE_ELEVATION,
+        spin,
+        side,
+      );
+      speed = required.speed * STOP_SPEED_MARGIN;
+      azimuth = required.azim;
+      elevation = STOP_DISTANCE_ELEVATION;
+    }
+  }
+
   return {
     ...launch(speed, elevation, azimuth),
     spin,

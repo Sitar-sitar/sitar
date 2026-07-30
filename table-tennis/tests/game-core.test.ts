@@ -541,47 +541,84 @@ test("solveShotはSTOPとFLICKをネット越しの着地点帯へ解く", () =>
     for (const depthScale of [0.9, 1.1]) {
       for (const sideRoll of [0, 1]) {
         for (const speedRoll of [0, 1]) {
-          const randomValues = [
-            sideRoll,
-            speedRoll,
-            0.5,
-            0.5,
-            0.5,
-          ];
-          let randomIndex = 0;
-          const solution = solveShot({
-            from: aiFrom,
-            type: "STOP",
-            direction: -1,
-            aimX:
-              -HW * 0.72 * (0.6 + 0.4 * aimRoll),
-            depth: SHOTS.STOP.dep * depthScale,
-            contactQuality: 1,
-            extraError: 0,
-            ballY: aiFrom.y,
-            random: () =>
-              randomValues[randomIndex++] ?? 0.5,
-          });
-          assert.equal(randomIndex, 5);
-          const landing = simLand({ ...aiFrom, ...solution });
-          assert.equal(
-            landing.net,
-            false,
-            `AI STOP aim=${aimRoll} depth=${depthScale}`,
-          );
-          assert.ok(
-            landing.z < 0,
-            `AI STOP は相手コートに入る z=${landing.z}`,
-          );
-          assert.ok(
-            Math.abs(landing.z) >= 18 &&
-              Math.abs(landing.z) <= 46,
-            `AI STOP z=${landing.z}`,
-          );
+          for (const contactQuality of [1, 0.25]) {
+            for (const elevationRoll of [0, 1]) {
+              for (const azimuthRoll of [0, 1]) {
+                for (const speedErrorRoll of [0, 1]) {
+                  const randomValues = [
+                    sideRoll,
+                    speedRoll,
+                    elevationRoll,
+                    azimuthRoll,
+                    speedErrorRoll,
+                  ];
+                  let randomIndex = 0;
+                  const solution = solveShot({
+                    from: aiFrom,
+                    type: "STOP",
+                    direction: -1,
+                    aimX:
+                      -HW *
+                      0.72 *
+                      (0.6 + 0.4 * aimRoll),
+                    depth: SHOTS.STOP.dep * depthScale,
+                    contactQuality,
+                    extraError: 0,
+                    ballY: aiFrom.y,
+                    random: () =>
+                      randomValues[randomIndex++] ?? 0.5,
+                  });
+                  assert.equal(randomIndex, 5);
+                  const landing = simLand({
+                    ...aiFrom,
+                    ...solution,
+                  });
+                  assert.equal(
+                    landing.net,
+                    false,
+                    `AI STOP aim=${aimRoll} depth=${depthScale} quality=${contactQuality}`,
+                  );
+                  assert.ok(
+                    landing.z < 0,
+                    `AI STOP は相手コートに入る z=${landing.z}`,
+                  );
+                  assert.ok(
+                    Math.abs(landing.z) >= 18 &&
+                      Math.abs(landing.z) <= 46,
+                    `AI STOP z=${landing.z}`,
+                  );
+                }
+              }
+            }
+          }
         }
       }
     }
   }
+
+  const blunderRandom = [0, 0, 0, 0, 0];
+  let blunderRandomIndex = 0;
+  const blunderSolution = solveShot({
+    from: aiFrom,
+    type: "STOP",
+    direction: -1,
+    aimX: -HW * 0.72 * 0.6,
+    depth: SHOTS.STOP.dep * 0.9,
+    contactQuality: 0.25,
+    extraError: 0.075,
+    ballY: aiFrom.y,
+    random: () =>
+      blunderRandom[blunderRandomIndex++] ?? 0.5,
+  });
+  assert.equal(blunderRandomIndex, 5);
+  const blunderLanding = simLand({
+    ...aiFrom,
+    ...blunderSolution,
+  });
+  assert.ok(
+    blunderLanding.z > 0,
+    "明示的なblunderは最終STOP帯保証の対象外",
+  );
 });
 
 test("バウンド有無で失点者と理由が決まる", () => {
