@@ -18,6 +18,9 @@ import type {
   ShotId,
 } from "./types.ts";
 
+const STOP_DISTANCE_ELEVATION = 0.6;
+const STOP_SPEED_MARGIN = 1.03;
+
 export function integrate(ball: BallVector, dt: number): void {
   const horizontalSpeed = Math.hypot(ball.vx, ball.vz);
   const ax = -DRAG * ball.vx + MAGS * ball.side * ball.vz;
@@ -387,6 +390,43 @@ export function solveShot(input: {
         spin,
         side,
       );
+    }
+    if (type === "STOP") {
+      const nominalLanding = simLand({
+        ...from,
+        ...launch(speed, elevation, azimuth),
+        spin,
+        side,
+      });
+      if (
+        nominalLanding.net ||
+        nominalLanding.z * direction <= 0
+      ) {
+        const required = solveSpeed(
+          from,
+          targetX,
+          targetZ,
+          STOP_DISTANCE_ELEVATION,
+          spin,
+          side,
+        );
+        speed = Math.max(
+          speed,
+          required.speed * STOP_SPEED_MARGIN,
+        );
+        azimuth = required.azim;
+        elevation = STOP_DISTANCE_ELEVATION;
+        if (!extraError && contactQuality > 0.3) {
+          elevation = ensureNetClear(
+            from,
+            elevation,
+            azimuth,
+            speed,
+            spin,
+            side,
+          );
+        }
+      }
     }
   }
 

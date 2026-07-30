@@ -5,6 +5,7 @@ import {
   AI_SERVE_LENGTH_WEIGHTS,
   AI_SERVE_WEIGHTS,
   AZ,
+  HW,
   PZ,
   SERVE_LENGTH_PROFILES,
   SERVE_LENGTHS,
@@ -532,6 +533,53 @@ test("solveShotはSTOPとFLICKをネット越しの着地点帯へ解く", () =>
           Math.abs(landing.z) <= maxZ,
         `${type} z=${landing.z}`,
       );
+    }
+  }
+
+  const aiFrom = { x: 0, y: 14.98, z: 75.87 };
+  for (const aimRoll of [0, 1]) {
+    for (const depthScale of [0.9, 1.1]) {
+      for (const sideRoll of [0, 1]) {
+        for (const speedRoll of [0, 1]) {
+          const randomValues = [
+            sideRoll,
+            speedRoll,
+            0.5,
+            0.5,
+            0.5,
+          ];
+          let randomIndex = 0;
+          const solution = solveShot({
+            from: aiFrom,
+            type: "STOP",
+            direction: -1,
+            aimX:
+              -HW * 0.72 * (0.6 + 0.4 * aimRoll),
+            depth: SHOTS.STOP.dep * depthScale,
+            contactQuality: 1,
+            extraError: 0,
+            ballY: aiFrom.y,
+            random: () =>
+              randomValues[randomIndex++] ?? 0.5,
+          });
+          assert.equal(randomIndex, 5);
+          const landing = simLand({ ...aiFrom, ...solution });
+          assert.equal(
+            landing.net,
+            false,
+            `AI STOP aim=${aimRoll} depth=${depthScale}`,
+          );
+          assert.ok(
+            landing.z < 0,
+            `AI STOP は相手コートに入る z=${landing.z}`,
+          );
+          assert.ok(
+            Math.abs(landing.z) >= 18 &&
+              Math.abs(landing.z) <= 46,
+            `AI STOP z=${landing.z}`,
+          );
+        }
+      }
     }
   }
 });
