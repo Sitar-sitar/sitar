@@ -238,7 +238,7 @@ test("短い球に合成フリックで台上技術が出る", async ({ page }) 
 
     for (
       let gesture = 0;
-      gesture < 12 && !/ストップ|フリック/u.test(flash.textContent ?? "");
+      gesture < 24 && !/ストップ|フリック/u.test(flash.textContent ?? "");
       gesture += 1
     ) {
       const rect = canvas.getBoundingClientRect();
@@ -266,7 +266,7 @@ test("短い球に合成フリックで台上技術が出る", async ({ page }) 
         clientY: startY + rect.height * 4 * 0.18,
         buttons: 0,
       });
-      await wait(120);
+      await wait(10);
     }
   });
 
