@@ -236,32 +236,38 @@ test("短い球に合成フリックで台上技術が出る", async ({ page }) 
       );
     };
 
-    await wait(730);
-    const rect = canvas.getBoundingClientRect();
-    const pointerId = 1;
-    const x = rect.left + rect.width / 2;
-    const startY = rect.top + rect.height * 0.1;
-    dispatch("pointerdown", {
-      pointerId,
-      clientX: x,
-      clientY: startY,
-      buttons: 1,
-    });
-    for (let move = 1; move <= 4; move += 1) {
-      await wait(move === 1 ? 10 : 80);
-      dispatch("pointermove", {
+    for (
+      let gesture = 0;
+      gesture < 12 && !/ストップ|フリック/u.test(flash.textContent ?? "");
+      gesture += 1
+    ) {
+      const rect = canvas.getBoundingClientRect();
+      const pointerId = gesture + 1;
+      const x = rect.left + rect.width / 2;
+      const startY = rect.top + rect.height * 0.1;
+      dispatch("pointerdown", {
         pointerId,
         clientX: x,
-        clientY: startY + rect.height * move * 0.18,
+        clientY: startY,
         buttons: 1,
       });
+      for (let move = 1; move <= 4; move += 1) {
+        await wait(move === 1 ? 10 : 80);
+        dispatch("pointermove", {
+          pointerId,
+          clientX: x,
+          clientY: startY + rect.height * move * 0.18,
+          buttons: 1,
+        });
+      }
+      dispatch("pointerup", {
+        pointerId,
+        clientX: x,
+        clientY: startY + rect.height * 4 * 0.18,
+        buttons: 0,
+      });
+      await wait(120);
     }
-    dispatch("pointerup", {
-      pointerId,
-      clientX: x,
-      clientY: startY + rect.height * 4 * 0.18,
-      buttons: 0,
-    });
   });
 
   await expect(page.locator("#flash")).toHaveText(/ストップ|フリック/u);
