@@ -37,6 +37,7 @@ function makeBall(overrides: Partial<BallState> = {}): BallState {
     hitter: "P",
     bounces: 1,
     serveStage: 0,
+    lastBounceZ: null,
     ...overrides,
   };
 }

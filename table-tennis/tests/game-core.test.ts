@@ -10,18 +10,22 @@ import {
   SERVE_LENGTHS,
   SERVE_PROFILES,
   SERVE_TYPES,
+  SHOTS,
 } from "../src/config.ts";
 import {
   launch,
   simLand,
   simState,
   solveServe,
+  solveShot,
   tableBounce,
 } from "../src/physics.ts";
 import {
+  classifyPlayerShot,
   chooseServeLength,
   chooseWeightedServe,
   isGameOver,
+  isShortBall,
   opponentOf,
   resolveMiss,
   rotateServerAfterPoint,
@@ -375,6 +379,8 @@ test("swingTypeOfは全ショット種別を描画用スイングへ対応付け
   assert.equal(swingTypeOf("CHOP"), -1);
   assert.equal(swingTypeOf("PUSH"), 0);
   assert.equal(swingTypeOf("LOB"), 0);
+  assert.equal(swingTypeOf("STOP"), -1);
+  assert.equal(swingTypeOf("FLICK"), 1);
 });
 
 test("ドライブとスマッシュは振り上げ、ツッツキは振り下ろしになる", () => {
@@ -411,6 +417,123 @@ test("ラケットは持ち手を含めて画面下端に収まる", () => {
     clampPaddleScreenY(568 * 0.86, 568, radius),
     568 * 0.86,
   );
+});
+
+test("isShortBallは受け手側の低い短球だけを判定する", () => {
+  assert.equal(isShortBall(null, 10, "P"), false);
+  assert.equal(isShortBall(-58, 22, "P"), true);
+  assert.equal(isShortBall(-59, 22, "P"), false);
+  assert.equal(isShortBall(-40, 22.01, "P"), false);
+  assert.equal(isShortBall(40, 10, "P"), false);
+  assert.equal(isShortBall(40, 10, "A"), true);
+  assert.equal(isShortBall(-40, 10, "A"), false);
+  assert.equal(isShortBall(0, 10, "P"), false);
+  assert.equal(isShortBall(0, 10, "A"), false);
+});
+
+test("classifyPlayerShotは短球のフリック方向で台上技術を選ぶ", () => {
+  assert.equal(
+    classifyPlayerShot({
+      flick: { vx: 0, vy: 4, sp: 4, t: 0 },
+      ballY: 10,
+      short: true,
+    }),
+    "STOP",
+  );
+  assert.equal(
+    classifyPlayerShot({
+      flick: { vx: 0, vy: -4, sp: 4, t: 0 },
+      ballY: 10,
+      short: true,
+    }),
+    "FLICK",
+  );
+  assert.equal(
+    classifyPlayerShot({ flick: null, ballY: 10, short: true }),
+    "PUSH",
+  );
+});
+
+test("classifyPlayerShotは長球でv0.5.0の分類を保つ", () => {
+  assert.equal(
+    classifyPlayerShot({ flick: null, ballY: 10, short: false }),
+    "PUSH",
+  );
+  assert.equal(
+    classifyPlayerShot({
+      flick: { vx: 0, vy: -4, sp: 4, t: 0 },
+      ballY: -9,
+      short: false,
+    }),
+    "LOB",
+  );
+  assert.equal(
+    classifyPlayerShot({
+      flick: { vx: 0, vy: -4, sp: 4, t: 0 },
+      ballY: 27,
+      short: false,
+    }),
+    "SMASH",
+  );
+  assert.equal(
+    classifyPlayerShot({
+      flick: { vx: 0, vy: -2, sp: 2, t: 0 },
+      ballY: 10,
+      short: false,
+    }),
+    "DRIVE",
+  );
+  assert.equal(
+    classifyPlayerShot({
+      flick: { vx: 0, vy: 4, sp: 4, t: 0 },
+      ballY: 10,
+      short: false,
+    }),
+    "CHOP",
+  );
+  assert.equal(
+    classifyPlayerShot({
+      flick: { vx: 4, vy: 0, sp: 4, t: 0 },
+      ballY: 10,
+      short: false,
+    }),
+    "PUSH",
+  );
+});
+
+test("solveShotはSTOPとFLICKをネット越しの着地点帯へ解く", () => {
+  const from = { x: 0, y: 16, z: -38 };
+  const cases = [
+    { type: "STOP" as const, minZ: 24, maxZ: 45 },
+    { type: "FLICK" as const, minZ: 60, maxZ: 100 },
+  ];
+
+  for (const { type, minZ, maxZ } of cases) {
+    for (const speedRoll of [0, 1]) {
+      const randomValues = [0.5, speedRoll, 0.5, 0.5, 0.5];
+      let randomIndex = 0;
+      const solution = solveShot({
+        from,
+        type,
+        direction: 1,
+        aimX: 0,
+        depth: SHOTS[type].dep,
+        contactQuality: 0.8,
+        extraError: 0,
+        ballY: from.y,
+        random: () => randomValues[randomIndex++] ?? 0.5,
+      });
+      assert.equal(randomIndex, 5);
+      const landing = simLand({ ...from, ...solution });
+      assert.equal(landing.net, false, `${type} speedRoll=${speedRoll}`);
+      assert.ok(landing.z > 0, `${type} は相手コートに入る`);
+      assert.ok(
+        Math.abs(landing.z) >= minZ &&
+          Math.abs(landing.z) <= maxZ,
+        `${type} z=${landing.z}`,
+      );
+    }
+  }
 });
 
 test("バウンド有無で失点者と理由が決まる", () => {

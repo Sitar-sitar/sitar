@@ -62,6 +62,20 @@ export const SHOTS: Record<ShotId, ShotConfig> = {
     err: 0.03,
     lab: "ロブ",
   },
+  STOP: {
+    sp: [230, 270],
+    spin: -0.5,
+    dep: 26,
+    err: 0.02,
+    lab: "ストップ",
+  },
+  FLICK: {
+    sp: [640, 720],
+    spin: 0.75,
+    dep: 78,
+    err: 0.022,
+    lab: "フリック",
+  },
 };
 
 export const LEVELS: Record<LevelId, LevelConfig> = {
@@ -305,6 +319,8 @@ export const AI_SERVE_DELAY_MS = 700;
 export const SERVE_CONTACT_Y = 24;
 export const CONTACT_PLANE_NEAR = 30;
 export const CONTACT_PLANE_FAR = 178;
+export const SHORT_BOUNCE_Z = 58;
+export const SHORT_BALL_MAX_Y = 22;
 export const SHOT_ORIGIN_Y_MIN = -46;
 export const AI_CONTACT_Y_MIN = -42;
 export const AI_CONTACT_Y_MAX = 105;

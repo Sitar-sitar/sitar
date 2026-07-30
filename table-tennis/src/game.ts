@@ -8,7 +8,6 @@ import {
   FLOOR,
   HW,
   LEVELS,
-  LOB_MAX_Y,
   MAX_SUBSTEPS,
   NET_H,
   NET_HW,
@@ -46,7 +45,9 @@ import {
 } from "./physics.ts";
 import { Renderer } from "./render.ts";
 import {
+  classifyPlayerShot,
   isGameOver,
+  isShortBall,
   opponentOf,
   resolveMiss,
   rotateServerAfterPoint,
@@ -107,6 +108,7 @@ export class Game {
     hitter: "P",
     bounces: 0,
     serveStage: 0,
+    lastBounceZ: null,
   };
 
   private readonly player: PaddleState = {
@@ -475,6 +477,7 @@ export class Game {
     this.ball.vz = 0;
     this.ball.spin = 0;
     this.ball.side = 0;
+    this.ball.lastBounceZ = null;
     this.state.rally = 0;
     this.ui.hint(
       playerServes
@@ -750,6 +753,7 @@ export class Game {
     this.ball.bounces = 0;
     this.ball.live = true;
     this.ball.serveStage = 0;
+    this.ball.lastBounceZ = null;
     this.trail.length = 0;
     this.feedback.hit(
       Math.min(
@@ -901,6 +905,7 @@ export class Game {
   }
 
   private judgeBounce(): void {
+    this.ball.lastBounceZ = this.ball.z;
     const side: Side = this.ball.z < 0 ? "P" : "A";
     if (this.ball.serveStage === 1) {
       if (side !== this.ball.hitter) {
@@ -942,28 +947,16 @@ export class Game {
     }
 
     const flick = this.input?.currentFlick() ?? null;
-    let type: ShotId;
-    if (!flick) {
-      type = "PUSH";
-    } else {
-      const upward = -flick.vy;
-      const downward = flick.vy;
-      if (upward > 0.42 * flick.sp) {
-        if (this.ball.y < LOB_MAX_Y) {
-          type = "LOB";
-        } else if (
-          flick.sp > 3 &&
-          this.ball.y > SMASH_MIN_Y
-        ) {
-          type = "SMASH";
-        } else {
-          type = "DRIVE";
-        }
-      } else if (downward > 0.42 * flick.sp) {
-        type = "CHOP";
-      } else {
-        type = "PUSH";
-      }
+    const type = classifyPlayerShot({
+      flick,
+      ballY: this.ball.y,
+      short: isShortBall(
+        this.ball.lastBounceZ,
+        this.ball.y,
+        "P",
+      ),
+    });
+    if (flick) {
       this.input?.clearFlick();
     }
 

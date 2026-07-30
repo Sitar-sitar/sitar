@@ -130,6 +130,27 @@ if (!startServe) {
 if (!/this\.player\.viewZ = PZ;/u.test(startServe)) {
   fail("startServe() は点間で player.viewZ を PZ へ戻してください。");
 }
+const makeShot = /private makeShot\([\s\S]*?\n {2}\}/u.exec(
+  gameSource,
+)?.[0];
+if (!makeShot) {
+  fail("src/game.ts の makeShot() を検出できません。");
+}
+const judgeBounce = /private judgeBounce\(\): void \{[\s\S]*?\n {2}\}/u.exec(
+  gameSource,
+)?.[0];
+if (!judgeBounce) {
+  fail("src/game.ts の judgeBounce() を検出できません。");
+}
+if (!judgeBounce.includes("this.ball.lastBounceZ = this.ball.z;")) {
+  fail("judgeBounce() はバウンド位置を lastBounceZ へ記録してください。");
+}
+if (
+  !startServe.includes("this.ball.lastBounceZ = null;") ||
+  !makeShot.includes("this.ball.lastBounceZ = null;")
+) {
+  fail("startServe() と makeShot() は lastBounceZ を null へ戻してください。");
+}
 const tick = /private tick\(dt: number\): void \{[\s\S]*?\n {2}\}/u.exec(
   gameSource,
 )?.[0];

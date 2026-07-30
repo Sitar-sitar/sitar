@@ -1,10 +1,15 @@
 import {
   AI_SERVE_LENGTH_WEIGHTS,
   AI_SERVE_WEIGHTS,
+  LOB_MAX_Y,
   SERVE_LENGTHS,
   SERVE_TYPES,
+  SHORT_BALL_MAX_Y,
+  SHORT_BOUNCE_Z,
+  SMASH_MIN_Y,
 } from "./config.ts";
 import type {
+  Flick,
   LevelId,
   ServeLength,
   ServeType,
@@ -16,13 +21,69 @@ export function swingTypeOf(shot: ShotId): number {
   switch (shot) {
     case "DRIVE":
     case "SMASH":
+    case "FLICK":
       return 1;
     case "CHOP":
+    case "STOP":
       return -1;
     case "PUSH":
     case "LOB":
       return 0;
   }
+}
+
+export function isShortBall(
+  lastBounceZ: number | null,
+  ballY: number,
+  receiver: Side,
+): boolean {
+  if (lastBounceZ === null) {
+    return false;
+  }
+  const bouncedOnReceiverSide =
+    receiver === "P" ? lastBounceZ < 0 : lastBounceZ > 0;
+  return (
+    bouncedOnReceiverSide &&
+    Math.abs(lastBounceZ) <= SHORT_BOUNCE_Z &&
+    ballY <= SHORT_BALL_MAX_Y
+  );
+}
+
+export function classifyPlayerShot(input: {
+  flick: Flick | null;
+  ballY: number;
+  short: boolean;
+}): ShotId {
+  const { flick, ballY, short } = input;
+  if (!flick) {
+    return "PUSH";
+  }
+
+  const upward = -flick.vy;
+  const downward = flick.vy;
+  if (short) {
+    if (downward > 0.42 * flick.sp) {
+      return "STOP";
+    }
+    if (upward > 0.42 * flick.sp) {
+      return "FLICK";
+    }
+    return "PUSH";
+  }
+
+  if (upward > 0.42 * flick.sp) {
+    if (ballY < LOB_MAX_Y) {
+      return "LOB";
+    }
+    if (flick.sp > 3 && ballY > SMASH_MIN_Y) {
+      return "SMASH";
+    }
+    return "DRIVE";
+  }
+  if (downward > 0.42 * flick.sp) {
+    return "CHOP";
+  }
+  return "PUSH";
 }
 
 export function chooseWeightedServe(

@@ -1,7 +1,14 @@
 export type Side = "P" | "A";
 export type GamePhase = "title" | "serve" | "rally" | "point" | "over";
 export type LevelId = "easy" | "mid" | "hard";
-export type ShotId = "DRIVE" | "SMASH" | "PUSH" | "CHOP" | "LOB";
+export type ShotId =
+  | "DRIVE"
+  | "SMASH"
+  | "PUSH"
+  | "CHOP"
+  | "LOB"
+  | "STOP"
+  | "FLICK";
 export type ServeType =
   | "topspin"
   | "backspin"
@@ -80,6 +87,7 @@ export interface BallState extends BallVector {
   hitter: Side;
   bounces: number;
   serveStage: number;
+  lastBounceZ: number | null;
 }
 
 export interface PaddleState {
