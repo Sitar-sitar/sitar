@@ -13,7 +13,6 @@ import {
   SERVE_LENGTHS,
   SERVE_PROFILES,
   SERVE_TYPES,
-  SHORT_BOUNCE_Z,
   SHOTS,
 } from "../src/config.ts";
 import {
@@ -1134,9 +1133,10 @@ test("U30: STOP/FLICKは接触品質に応じたリスク階段を持つ（A-1�
 
 test("U31: 台上局面の終了性（S-1決定論・U31-b統計回帰）", () => {
   // S-1: AIがPUSHを選ぶと、その着地は短球帯（abs(z) <= SHORT_BOUNCE_Z）に入らない（決定論的）。
-  // PUSH.dep=88 は短球帯の外という設計の前提を、格子上の全件で検査する（レビュー該当なし・設計書§4.4.2）。
+  // PUSH.dep=88 は短球帯の外という設計の前提を、製品の打点計算経路まで通して格子上の全件で検査する。
   let s1Total = 0;
   let s1ShortCount = 0;
+  const s1Draw = seededRandom(20260730);
   for (const direction of [1, -1] as const) {
     for (const point of TOUCH_POINTS) {
       const from = {
@@ -1144,27 +1144,33 @@ test("U31: 台上局面の終了性（S-1決定論・U31-b統計回帰）", () =
         y: point.y,
         z: -direction * point.absZ,
       };
-      for (const quality of [1, 0.25] as const) {
+      for (const aimRoll of [0, 1] as const) {
         for (const depthRoll of [0, 1] as const) {
           const depth = SHOTS.PUSH.dep * (0.85 + 0.3 * depthRoll);
-          const aimX = touchAimX(point.x, 0.8);
-          const values = [0.5, 0.5, 0.5, 0.5, 0.5];
-          let index = 0;
+          const aimX = touchAimX(point.x, aimRoll);
           const solution = solveShot({
             from,
             type: "PUSH",
             direction,
             aimX,
             depth,
-            contactQuality: quality,
+            contactQuality: 0.8,
             extraError: 0,
             ballY: point.y,
-            random: () => values[index++] ?? 0.5,
+            random: s1Draw,
           });
-          const landing = simLand({ ...from, ...solution });
+          const shotBall: BallVector = { ...from, ...solution };
+          const landing = simLand(shotBall);
           if (classifyLanding(landing, direction) === "ok") {
             s1Total += 1;
-            if (Math.abs(landing.z) <= SHORT_BOUNCE_Z) {
+            const receiver = direction === 1 ? "A" : "P";
+            const targetZ = solveContactPlane(shotBall, receiver);
+            const contact = predictAt(shotBall, targetZ, direction, FLOOR);
+            assert.ok(
+              contact,
+              `U31 S-1 dir=${direction} aimRoll=${aimRoll} depthRoll=${depthRoll} は受け手打点へ到達する`,
+            );
+            if (isShortBall(landing.z, contact.y, receiver)) {
               s1ShortCount += 1;
             }
           }
@@ -1172,7 +1178,7 @@ test("U31: 台上局面の終了性（S-1決定論・U31-b統計回帰）", () =
       }
     }
   }
-  assert.ok(s1Total > 0, "U31 S-1 は有効着地が1件以上ある");
+  assert.equal(s1Total, 414, "U31 S-1 の有効着地は設計実測どおり414件");
   assert.equal(
     s1ShortCount,
     0,
@@ -1213,14 +1219,14 @@ test("U31: 台上局面の終了性（S-1決定論・U31-b統計回帰）", () =
   }
 
   function simulateRally(draw: () => number, level: Level): number {
-    let lastBounceZ = -35;
-    let hitter: "P" | "A" = "P";
+    // 既に短球がAI側へ届いた状態から、AIの返球を1球目として数える（設計書§4.4.3）。
+    let hitter: "P" | "A" = "A";
+    let from = { x: 0, y: REPRESENTATIVE_Y, z: 35 };
     let balls = 0;
 
     for (let step = 0; step < SAFETY_CAP; step += 1) {
       balls += 1;
       const direction = hitter === "P" ? 1 : -1;
-      const from = { x: 0, y: REPRESENTATIVE_Y, z: lastBounceZ };
       const type: TableTopShot | "PUSH" =
         hitter === "P" ? "STOP" : chooseAiTableTopType(level, draw());
       const quality = hitter === "P" ? 0.8 : 0.7 + 0.3 * draw();
@@ -1233,18 +1239,21 @@ test("U31: 台上局面の終了性（S-1決定論・U31-b統計回帰）", () =
         depth,
         contactQuality: quality,
         extraError: 0,
-        ballY: REPRESENTATIVE_Y,
+        ballY: from.y,
         random: draw,
       });
-      const landing = simLand({ ...from, ...solution });
+      const shotBall: BallVector = { ...from, ...solution };
+      const landing = simLand(shotBall);
       if (classifyLanding(landing, direction) !== "ok") {
         return balls;
       }
       const receiver: "P" | "A" = hitter === "P" ? "A" : "P";
-      if (!isShortBall(landing.z, REPRESENTATIVE_Y, receiver)) {
+      const targetZ = solveContactPlane(shotBall, receiver);
+      const contact = predictAt(shotBall, targetZ, direction, FLOOR);
+      if (!contact || !isShortBall(landing.z, contact.y, receiver)) {
         return balls;
       }
-      lastBounceZ = landing.z;
+      from = { x: contact.x, y: contact.y, z: targetZ };
       hitter = receiver;
     }
     return SAFETY_CAP;
