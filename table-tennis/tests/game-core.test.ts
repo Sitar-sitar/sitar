@@ -13,6 +13,7 @@ import {
   SERVE_LENGTHS,
   SERVE_PROFILES,
   SERVE_TYPES,
+  SHORT_BOUNCE_Z,
   SHOTS,
 } from "../src/config.ts";
 import {
@@ -135,6 +136,69 @@ function cachedServeTrace(
   const trace = traceServe(serveType, direction, aimX, serveLength);
   serveTraceCache.set(key, trace);
   return trace;
+}
+
+// U28'/U30/U31 で共有する台上技術の校正ヘルパー（設計書§5.1・§5.2）。
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+const TOUCH_POINTS: readonly { x: number; y: number; absZ: number }[] =
+  (() => {
+    const generated: { x: number; y: number; absZ: number }[] = [];
+    for (const absZ of [34, 45, 55, 65, 75, 87]) {
+      for (const y of [7, 14, 21]) {
+        for (const x of [0, 45, -80]) {
+          generated.push({ x, y, absZ });
+        }
+      }
+    }
+    return generated;
+  })();
+
+type TableTopShot = "STOP" | "FLICK";
+
+function touchDepth(type: TableTopShot, roll: number): number {
+  return type === "STOP"
+    ? SHOTS.STOP.dep * (0.9 + 0.2 * roll)
+    : SHOTS.FLICK.dep * (0.85 + 0.3 * roll);
+}
+
+function touchAimX(x: number, roll: number): number {
+  return -Math.sign(x) * HW * 0.72 * (0.6 + 0.4 * roll);
+}
+
+type LandingOutcome = "net" | "ownSide" | "out" | "ok";
+
+function classifyLanding(
+  landing: ReturnType<typeof simLand>,
+  direction: 1 | -1,
+): LandingOutcome {
+  if (landing.net) {
+    return "net";
+  }
+  if (landing.z * direction <= 0) {
+    return "ownSide";
+  }
+  if (!onTable(landing.x, landing.z) || landing.timeout) {
+    return "out";
+  }
+  return "ok";
+}
+
+function percentile(sorted: readonly number[], ratio: number): number {
+  if (sorted.length === 0) {
+    return 0;
+  }
+  const index = Math.min(
+    sorted.length - 1,
+    Math.floor(ratio * sorted.length),
+  );
+  return sorted[index] ?? 0;
 }
 
 test("9種類×3長さのサーブが両方向・代表3狙いで成立する", () => {
@@ -731,68 +795,6 @@ test("U33: 非対象5技（DRIVE/SMASH/PUSH/CHOP/LOB）のsolveShot出力はビ�
 });
 
 test("U28': solveShotのSTOP/FLICKは接触品質に応じた統計的リスクを持つ", () => {
-  function seededRandom(seed: number): () => number {
-    let state = seed >>> 0;
-    return () => {
-      state = (state * 1664525 + 1013904223) >>> 0;
-      return state / 4294967296;
-    };
-  }
-
-  const touchPoints: readonly { x: number; y: number; absZ: number }[] =
-    (() => {
-      const generated: { x: number; y: number; absZ: number }[] = [];
-      for (const absZ of [34, 45, 55, 65, 75, 87]) {
-        for (const y of [7, 14, 21]) {
-          for (const x of [0, 45, -80]) {
-            generated.push({ x, y, absZ });
-          }
-        }
-      }
-      return generated;
-    })();
-
-  type TableTopShot = "STOP" | "FLICK";
-
-  function touchDepth(type: TableTopShot, roll: number): number {
-    return type === "STOP"
-      ? SHOTS.STOP.dep * (0.9 + 0.2 * roll)
-      : SHOTS.FLICK.dep * (0.85 + 0.3 * roll);
-  }
-
-  function touchAimX(x: number, roll: number): number {
-    return -Math.sign(x) * HW * 0.72 * (0.6 + 0.4 * roll);
-  }
-
-  type Outcome = "net" | "ownSide" | "out" | "ok";
-
-  function classifyLanding(
-    landing: ReturnType<typeof simLand>,
-    direction: 1 | -1,
-  ): Outcome {
-    if (landing.net) {
-      return "net";
-    }
-    if (landing.z * direction <= 0) {
-      return "ownSide";
-    }
-    if (!onTable(landing.x, landing.z) || landing.timeout) {
-      return "out";
-    }
-    return "ok";
-  }
-
-  function percentile(sorted: readonly number[], ratio: number): number {
-    if (sorted.length === 0) {
-      return 0;
-    }
-    const index = Math.min(
-      sorted.length - 1,
-      Math.floor(ratio * sorted.length),
-    );
-    return sorted[index] ?? 0;
-  }
-
   // a. 確率エンベロープ（両方向・全品質帯）。§5.2の実測に±3pt前後の幅を持たせた判定値。
   const qualities = [1, 0.75, 0.5, 0.25] as const;
   const envelope: Record<
@@ -826,7 +828,7 @@ test("U28': solveShotのSTOP/FLICKは接触品質に応じた統計的リスク�
       for (const quality of qualities) {
         let ownSide = 0;
         const landed: number[] = [];
-        for (const point of touchPoints) {
+        for (const point of TOUCH_POINTS) {
           const from = {
             x: point.x,
             y: point.y,
@@ -869,7 +871,7 @@ test("U28': solveShotのSTOP/FLICKは接触品質に応じた統計的リスク�
           0,
           `U28'-a ${type} dir=${direction} q=${quality} は自陣落下0件`,
         );
-        const total = touchPoints.length * 40;
+        const total = TOUCH_POINTS.length * 40;
         const missRate = ((total - landed.length) / total) * 100;
         const [min, max] = envelope[type][quality];
         assert.ok(
@@ -905,7 +907,7 @@ test("U28': solveShotのSTOP/FLICKは接触品質に応じた統計的リスク�
     let total = 0;
     let ownSide = 0;
     let maxAbsZ = 0;
-    for (const point of touchPoints) {
+    for (const point of TOUCH_POINTS) {
       const from = { x: point.x, y: point.y, z: -direction * point.absZ };
       for (const quality of [1, 0.25] as const) {
         for (let mask = 0; mask < 128; mask += 1) {
@@ -1012,7 +1014,7 @@ test("U28': solveShotのSTOP/FLICKは接触品質に応じた統計的リスク�
     let miss = 0;
     let total = 0;
     for (const direction of [1, -1] as const) {
-      for (const point of touchPoints) {
+      for (const point of TOUCH_POINTS) {
         const from = {
           x: point.x,
           y: point.y,
@@ -1052,6 +1054,220 @@ test("U28': solveShotのSTOP/FLICKは接触品質に応じた統計的リスク�
         `U28'-d ${type} q=${quality} blunderは非blunderのミス率を厳に上回る (${baseline.toFixed(1)}% -> ${blunder.toFixed(1)}%)`,
       );
     }
+  }
+});
+
+test("U30: STOP/FLICKは接触品質に応じたリスク階段を持つ（A-1回帰ガード）", () => {
+  function missRate(type: TableTopShot, quality: number): number {
+    const draw = seededRandom(20260730);
+    let miss = 0;
+    let total = 0;
+    for (const direction of [1, -1] as const) {
+      for (const point of TOUCH_POINTS) {
+        const from = {
+          x: point.x,
+          y: point.y,
+          z: -direction * point.absZ,
+        };
+        for (let trial = 0; trial < 40; trial += 1) {
+          const depth = touchDepth(type, draw());
+          const aimX = touchAimX(point.x, draw());
+          const solution = solveShot({
+            from,
+            type,
+            direction,
+            aimX,
+            depth,
+            contactQuality: quality,
+            extraError: 0,
+            ballY: point.y,
+            random: draw,
+          });
+          const landing = simLand({ ...from, ...solution });
+          total += 1;
+          if (classifyLanding(landing, direction) !== "ok") {
+            miss += 1;
+          }
+        }
+      }
+    }
+    return (miss / total) * 100;
+  }
+
+  const stop1 = missRate("STOP", 1);
+  const stop075 = missRate("STOP", 0.75);
+  const stop050 = missRate("STOP", 0.5);
+  const stop025 = missRate("STOP", 0.25);
+  const flick1 = missRate("FLICK", 1);
+  const flick075 = missRate("FLICK", 0.75);
+  const flick050 = missRate("FLICK", 0.5);
+  const flick025 = missRate("FLICK", 0.25);
+
+  // a. STOPのミス率は全品質帯で0より大（A-1の直接の回帰ガード）
+  for (const rate of [stop1, stop075, stop050, stop025]) {
+    assert.ok(rate > 0, `U30 STOP のミス率は0より大 (${rate.toFixed(1)}%)`);
+  }
+
+  // b. FLICKのミス率はSTOPを全品質帯で上回る
+  assert.ok(flick1 > stop1, `U30 q=1.00 はFLICK(${flick1}) > STOP(${stop1})`);
+  assert.ok(
+    flick075 > stop075,
+    `U30 q=0.75 はFLICK(${flick075}) > STOP(${stop075})`,
+  );
+  assert.ok(
+    flick050 > stop050,
+    `U30 q=0.50 はFLICK(${flick050}) > STOP(${stop050})`,
+  );
+  assert.ok(
+    flick025 > stop025,
+    `U30 q=0.25 はFLICK(${flick025}) > STOP(${stop025})`,
+  );
+
+  // c. 品質が下がるとミス率が単調増加する
+  assert.ok(stop075 > stop1, "U30 STOPは品質低下でミス率が単調増加する");
+  assert.ok(stop050 > stop075, "U30 STOPは品質低下でミス率が単調増加する");
+  assert.ok(stop025 > stop050, "U30 STOPは品質低下でミス率が単調増加する");
+  assert.ok(flick075 > flick1, "U30 FLICKは品質低下でミス率が単調増加する");
+  assert.ok(flick050 > flick075, "U30 FLICKは品質低下でミス率が単調増加する");
+  assert.ok(flick025 > flick050, "U30 FLICKは品質低下でミス率が単調増加する");
+});
+
+test("U31: 台上局面の終了性（S-1決定論・U31-b統計回帰）", () => {
+  // S-1: AIがPUSHを選ぶと、その着地は短球帯（abs(z) <= SHORT_BOUNCE_Z）に入らない（決定論的）。
+  // PUSH.dep=88 は短球帯の外という設計の前提を、格子上の全件で検査する（レビュー該当なし・設計書§4.4.2）。
+  let s1Total = 0;
+  let s1ShortCount = 0;
+  for (const direction of [1, -1] as const) {
+    for (const point of TOUCH_POINTS) {
+      const from = {
+        x: point.x,
+        y: point.y,
+        z: -direction * point.absZ,
+      };
+      for (const quality of [1, 0.25] as const) {
+        for (const depthRoll of [0, 1] as const) {
+          const depth = SHOTS.PUSH.dep * (0.85 + 0.3 * depthRoll);
+          const aimX = touchAimX(point.x, 0.8);
+          const values = [0.5, 0.5, 0.5, 0.5, 0.5];
+          let index = 0;
+          const solution = solveShot({
+            from,
+            type: "PUSH",
+            direction,
+            aimX,
+            depth,
+            contactQuality: quality,
+            extraError: 0,
+            ballY: point.y,
+            random: () => values[index++] ?? 0.5,
+          });
+          const landing = simLand({ ...from, ...solution });
+          if (classifyLanding(landing, direction) === "ok") {
+            s1Total += 1;
+            if (Math.abs(landing.z) <= SHORT_BOUNCE_Z) {
+              s1ShortCount += 1;
+            }
+          }
+        }
+      }
+    }
+  }
+  assert.ok(s1Total > 0, "U31 S-1 は有効着地が1件以上ある");
+  assert.equal(
+    s1ShortCount,
+    0,
+    `U31 S-1 PUSHの着地は短球帯に入らない（有効着地${s1Total}件中）`,
+  );
+
+  // U31-b: 固定seed標本の統計回帰契約（設計書§4.4.3）。「保証」「上限」ではなく回帰しきい値。
+  type Level = "easy" | "mid" | "hard";
+  const REPRESENTATIVE_Y = 14;
+  const SAFETY_CAP = 500;
+
+  function chooseAiTableTopType(
+    level: Level,
+    roll: number,
+  ): TableTopShot | "PUSH" {
+    if (level === "easy") {
+      return "PUSH";
+    }
+    if (level === "mid") {
+      return roll < 0.35 ? "STOP" : "PUSH";
+    }
+    if (roll < 0.35) {
+      return "FLICK";
+    }
+    if (roll < 0.7) {
+      return "STOP";
+    }
+    return "PUSH";
+  }
+
+  function shortBallDepth(
+    type: TableTopShot | "PUSH",
+    roll: number,
+  ): number {
+    return type === "STOP"
+      ? SHOTS.STOP.dep * (0.9 + 0.2 * roll)
+      : SHOTS[type].dep * (0.85 + 0.3 * roll);
+  }
+
+  function simulateRally(draw: () => number, level: Level): number {
+    let lastBounceZ = -35;
+    let hitter: "P" | "A" = "P";
+    let balls = 0;
+
+    for (let step = 0; step < SAFETY_CAP; step += 1) {
+      balls += 1;
+      const direction = hitter === "P" ? 1 : -1;
+      const from = { x: 0, y: REPRESENTATIVE_Y, z: lastBounceZ };
+      const type: TableTopShot | "PUSH" =
+        hitter === "P" ? "STOP" : chooseAiTableTopType(level, draw());
+      const quality = hitter === "P" ? 0.8 : 0.7 + 0.3 * draw();
+      const depth = shortBallDepth(type, draw());
+      const solution = solveShot({
+        from,
+        type,
+        direction,
+        aimX: 0,
+        depth,
+        contactQuality: quality,
+        extraError: 0,
+        ballY: REPRESENTATIVE_Y,
+        random: draw,
+      });
+      const landing = simLand({ ...from, ...solution });
+      if (classifyLanding(landing, direction) !== "ok") {
+        return balls;
+      }
+      const receiver: "P" | "A" = hitter === "P" ? "A" : "P";
+      if (!isShortBall(landing.z, REPRESENTATIVE_Y, receiver)) {
+        return balls;
+      }
+      lastBounceZ = landing.z;
+      hitter = receiver;
+    }
+    return SAFETY_CAP;
+  }
+
+  for (const level of ["easy", "mid", "hard"] as const) {
+    const draw = seededRandom(20260730);
+    const samples: number[] = [];
+    for (let trial = 0; trial < 400; trial += 1) {
+      samples.push(simulateRally(draw, level));
+    }
+    samples.sort((a, b) => a - b);
+    const median = percentile(samples, 0.5);
+    const p99 = percentile(samples, 0.99);
+    const max = samples[samples.length - 1] ?? 0;
+    assert.ok(
+      max <= 24,
+      `U31-b ${level} の標本最大が24球以内 (max=${max}, p99=${p99})`,
+    );
+    assert.ok(
+      median <= 3,
+      `U31-b ${level} の中央値が3球以内 (median=${median})`,
+    );
   }
 });
 
