@@ -10,11 +10,13 @@ import {
   HW,
   LEVELS,
   PADDLE_LIMIT,
+  SHOTS,
 } from "./config.ts";
 import { predictAt } from "./physics.ts";
 import {
   chooseServeLength,
   chooseWeightedServe,
+  isShortBall,
 } from "./rules.ts";
 import type {
   AiState,
@@ -113,6 +115,46 @@ export class OpponentAi {
 
     const quality =
       1 - Math.abs(ball.x - this.state.x) / config.reach;
+    if (isShortBall(ball.lastBounceZ, ball.y, "A")) {
+      const tableTopRoll = this.random();
+      let type: ShotId;
+      if (level === "easy") {
+        type = "PUSH";
+      } else if (level === "mid") {
+        type = tableTopRoll < 0.35 ? "STOP" : "PUSH";
+      } else {
+        type =
+          tableTopRoll < 0.35
+            ? "FLICK"
+            : tableTopRoll < 0.7
+              ? "STOP"
+              : "PUSH";
+      }
+
+      const aimRoll = this.random();
+      const aim =
+        level === "hard"
+          ? -Math.sign(playerX || 1) *
+            HW *
+            0.72 *
+            (0.6 + 0.4 * aimRoll)
+          : (aimRoll * 2 - 1) * HW * 0.8 * config.spread;
+      const depthRoll = this.random();
+      const depth =
+        type === "STOP"
+          ? SHOTS.STOP.dep * (0.9 + 0.2 * depthRoll)
+          : SHOTS[type].dep * (0.85 + 0.3 * depthRoll);
+      const blunderRoll = this.random();
+      const blunder = blunderRoll < config.miss ? 0.075 : 0;
+      return {
+        type,
+        aim,
+        depth,
+        quality: Math.max(0.25, quality),
+        blunder,
+      };
+    }
+
     let type: ShotId;
     if (ball.y < AI_LOB_MAX_Y) {
       type = "LOB";
