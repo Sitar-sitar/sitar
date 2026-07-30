@@ -205,6 +205,22 @@ test("decideShotは短球をguard後に4乱数で台上処理する", () => {
     LEVELS.mid.depth * (0.82 + 0.3 * 0.5),
   );
   assert.equal(longSequence.consumed(), 4);
+
+  // U29': しきい値48超（旧58以下では短球誤判定していた50）は長球経路へ落ちる
+  const middleLengthSequence = scriptedRandom([0.9, 0.5, 0.5, 0.9]);
+  const middleLengthAi = new OpponentAi(middleLengthSequence.random);
+  const middleLengthDecision = middleLengthAi.decideShot(
+    makeBall({ lastBounceZ: 50 }),
+    50,
+    "mid",
+  );
+  assert.ok(middleLengthDecision);
+  assert.equal(middleLengthDecision.type, "DRIVE");
+  assertClose(
+    middleLengthDecision.depth,
+    LEVELS.mid.depth * (0.82 + 0.3 * 0.5),
+  );
+  assert.equal(middleLengthSequence.consumed(), 4);
 });
 
 test("chooseServeは球種・長さ・狙いの順で乱数を使う", () => {

@@ -5,6 +5,7 @@ import {
   AI_SERVE_LENGTH_WEIGHTS,
   AI_SERVE_WEIGHTS,
   AZ,
+  FLOOR,
   HL,
   HW,
   PZ,
@@ -17,8 +18,10 @@ import {
 import {
   launch,
   onTable,
+  predictAt,
   simLand,
   simState,
+  solveContactPlane,
   solveServe,
   solveShot,
   tableBounce,
@@ -57,7 +60,12 @@ function traceServe(
   direction: 1 | -1,
   aimX: number,
   serveLength: ServeLength = "middle",
-): { firstX: number; secondX: number; secondZ: number } {
+): {
+  firstX: number;
+  secondX: number;
+  secondZ: number;
+  ball: BallVector;
+} {
   const profile = SERVE_PROFILES[serveType];
   const length = SERVE_LENGTH_PROFILES[serveLength];
   const from = {
@@ -104,6 +112,7 @@ function traceServe(
     firstX: first.x,
     secondX: second.x,
     secondZ: second.z,
+    ball,
   };
 }
 
@@ -424,14 +433,77 @@ test("ラケットは持ち手を含めて画面下端に収まる", () => {
 
 test("isShortBallは受け手側の低い短球だけを判定する", () => {
   assert.equal(isShortBall(null, 10, "P"), false);
-  assert.equal(isShortBall(-58, 22, "P"), true);
-  assert.equal(isShortBall(-59, 22, "P"), false);
+  assert.equal(isShortBall(-48, 22, "P"), true);
+  assert.equal(isShortBall(-49, 22, "P"), false);
   assert.equal(isShortBall(-40, 22.01, "P"), false);
   assert.equal(isShortBall(40, 10, "P"), false);
   assert.equal(isShortBall(40, 10, "A"), true);
   assert.equal(isShortBall(-40, 10, "A"), false);
   assert.equal(isShortBall(0, 10, "P"), false);
   assert.equal(isShortBall(0, 10, "A"), false);
+});
+
+test("U32: サーブ長さは実接触経路のisShortBallで短球/非短球に分離する", () => {
+  const aimXs = [-50, 0, 50] as const;
+  const directions = [1, -1] as const;
+
+  for (const serveLength of SERVE_LENGTHS) {
+    let total = 0;
+    let reached = 0;
+    let shortCount = 0;
+    let allBeyond48 = true;
+
+    for (const serveType of SERVE_TYPES) {
+      for (const direction of directions) {
+        for (const aimX of aimXs) {
+          total += 1;
+          const trace = cachedServeTrace(
+            serveType,
+            direction,
+            aimX,
+            serveLength,
+          );
+          const receiver = direction === 1 ? "A" : "P";
+          const targetZ = solveContactPlane(trace.ball, receiver);
+          const contact = predictAt(
+            trace.ball,
+            targetZ,
+            direction,
+            FLOOR,
+          );
+          if (Math.abs(trace.secondZ) <= 48) {
+            allBeyond48 = false;
+          }
+          if (contact) {
+            reached += 1;
+            if (isShortBall(trace.secondZ, contact.y, receiver)) {
+              shortCount += 1;
+            }
+          }
+        }
+      }
+    }
+
+    assert.equal(total, 54, `U32 ${serveLength} の母集団は54件`);
+    if (serveLength === "short") {
+      assert.equal(reached, 54, "U32 short は全件が受け手打点へ到達する");
+      assert.equal(shortCount, 54, "U32 short は全件isShortBall=true");
+    } else if (serveLength === "middle") {
+      assert.equal(reached, 54, "U32 middle は全件が受け手打点へ到達する");
+      assert.equal(shortCount, 0, "U32 middle は全件isShortBall=false");
+    } else {
+      assert.equal(reached, 50, "U32 long は50件が受け手打点へ到達する");
+      assert.equal(
+        shortCount,
+        0,
+        "U32 long の到達分は全件isShortBall=false",
+      );
+      assert.ok(
+        allBeyond48,
+        "U32 long は到達可否に依らず全54件で2バウンド目abs(z)>48",
+      );
+    }
+  }
 });
 
 test("classifyPlayerShotは短球のフリック方向で台上技術を選ぶ", () => {
