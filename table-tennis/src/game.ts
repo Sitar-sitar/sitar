@@ -2,8 +2,6 @@ import { OpponentAi } from "./ai.ts";
 import {
   AI_SERVE_DELAY_MS,
   AZ,
-  CONTACT_PLANE_FAR,
-  CONTACT_PLANE_NEAR,
   FIXED_STEP,
   FLOOR,
   HW,
@@ -39,6 +37,7 @@ import {
   onTable,
   predictAt,
   simLand,
+  solveContactPlane,
   solveServe,
   solveShot,
   tableBounce,
@@ -665,60 +664,7 @@ export class Game {
   }
 
   private contactPlane(receiver: Side): number {
-    const direction = receiver === "P" ? -1 : 1;
-    const ball: BallVector = {
-      x: this.ball.x,
-      y: this.ball.y,
-      z: this.ball.z,
-      vx: this.ball.vx,
-      vy: this.ball.vy,
-      vz: this.ball.vz,
-      spin: this.ball.spin,
-      side: this.ball.side,
-    };
-    const dt = 1 / 240;
-    let previousY: number;
-    let previousZ: number;
-    let bounced = false;
-
-    for (let time = 0; time < 3; time += dt) {
-      previousY = ball.y;
-      previousZ = ball.z;
-      integrate(ball, dt);
-      if (previousY > 0 && ball.y <= 0) {
-        if (!onTable(ball.x, ball.z)) {
-          break;
-        }
-        if (!bounced) {
-          ball.y = 0;
-          if (Math.sign(ball.z) === direction) {
-            bounced = true;
-          }
-          tableBounce(ball);
-          continue;
-        }
-        return this.clampPlane(previousZ, direction);
-      }
-      if (bounced && ball.vy < 0 && ball.y <= 22) {
-        return this.clampPlane(ball.z, direction);
-      }
-      if (ball.y < FLOOR) {
-        break;
-      }
-    }
-    return direction < 0 ? PZ : AZ;
-  }
-
-  private clampPlane(z: number, direction: number): number {
-    return direction < 0
-      ? Math.max(
-          -CONTACT_PLANE_FAR,
-          Math.min(-CONTACT_PLANE_NEAR, z),
-        )
-      : Math.min(
-          CONTACT_PLANE_FAR,
-          Math.max(CONTACT_PLANE_NEAR, z),
-        );
+    return solveContactPlane(this.ball, receiver);
   }
 
   private makeShot(

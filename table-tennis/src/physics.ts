@@ -1,6 +1,10 @@
 import {
+  AZ,
+  CONTACT_PLANE_FAR,
+  CONTACT_PLANE_NEAR,
   DRAG,
   E_TABLE,
+  FLOOR,
   G,
   HL,
   HW,
@@ -8,6 +12,7 @@ import {
   MAGS,
   NET_H,
   NET_HW,
+  PZ,
   SHOTS,
 } from "./config.ts";
 import type {
@@ -17,6 +22,7 @@ import type {
   ServeSolution,
   ShotId,
   ShotSpeed,
+  Side,
 } from "./types.ts";
 
 export function integrate(ball: BallVector, dt: number): void {
@@ -482,4 +488,49 @@ export function predictAt(
   }
 
   return null;
+}
+
+function clampPlane(z: number, direction: number): number {
+  return direction < 0
+    ? Math.max(-CONTACT_PLANE_FAR, Math.min(-CONTACT_PLANE_NEAR, z))
+    : Math.min(CONTACT_PLANE_FAR, Math.max(CONTACT_PLANE_NEAR, z));
+}
+
+export function solveContactPlane(
+  ball: BallVector,
+  receiver: Side,
+): number {
+  const direction = receiver === "P" ? -1 : 1;
+  const state = cloneBall(ball);
+  const dt = 1 / 240;
+  let previousY: number;
+  let previousZ: number;
+  let bounced = false;
+
+  for (let time = 0; time < 3; time += dt) {
+    previousY = state.y;
+    previousZ = state.z;
+    integrate(state, dt);
+    if (previousY > 0 && state.y <= 0) {
+      if (!onTable(state.x, state.z)) {
+        break;
+      }
+      if (!bounced) {
+        state.y = 0;
+        if (Math.sign(state.z) === direction) {
+          bounced = true;
+        }
+        tableBounce(state);
+        continue;
+      }
+      return clampPlane(previousZ, direction);
+    }
+    if (bounced && state.vy < 0 && state.y <= 22) {
+      return clampPlane(state.z, direction);
+    }
+    if (state.y < FLOOR) {
+      break;
+    }
+  }
+  return direction < 0 ? PZ : AZ;
 }

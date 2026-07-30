@@ -164,6 +164,24 @@ if ((await read("src/ai.ts")).includes("stepViewZ")) {
   fail("src/ai.ts は viewZ を追従させない設計です。");
 }
 
+const contactPlaneMethod =
+  /private contactPlane\(receiver: Side\): number \{[\s\S]*?\n {2}\}/u.exec(
+    gameSource,
+  )?.[0];
+if (!contactPlaneMethod) {
+  fail("src/game.ts の contactPlane() を検出できません。");
+}
+if (!contactPlaneMethod.includes("solveContactPlane(")) {
+  fail(
+    "contactPlane() は打点平面の計算を solveContactPlane() へ委譲してください。",
+  );
+}
+if (contactPlaneMethod.includes("integrate(")) {
+  fail(
+    "contactPlane() が integrate() を直接呼んでいます。打点計算は solveContactPlane() へ集約してください。",
+  );
+}
+
 const manifest = JSON.parse(await read("manifest.webmanifest"));
 for (const field of ["name", "short_name", "start_url", "display", "icons"]) {
   if (manifest[field] === undefined) {
