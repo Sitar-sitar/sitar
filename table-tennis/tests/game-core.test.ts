@@ -5,6 +5,7 @@ import {
   AI_SERVE_LENGTH_WEIGHTS,
   AI_SERVE_WEIGHTS,
   AZ,
+  HL,
   HW,
   PZ,
   SERVE_LENGTH_PROFILES,
@@ -15,6 +16,7 @@ import {
 } from "../src/config.ts";
 import {
   launch,
+  onTable,
   simLand,
   simState,
   solveServe,
@@ -656,123 +658,329 @@ test("U33: 非対象5技（DRIVE/SMASH/PUSH/CHOP/LOB）のsolveShot出力はビ�
   }
 });
 
-test("solveShotはSTOPとFLICKをネット越しの着地点帯へ解く", () => {
-  const from = { x: 0, y: 16, z: -38 };
-  const cases = [
-    { type: "STOP" as const, minZ: 24, maxZ: 45 },
-    { type: "FLICK" as const, minZ: 60, maxZ: 100 },
-  ];
-
-  for (const { type, minZ, maxZ } of cases) {
-    for (const speedRoll of [0, 1]) {
-      const randomValues = [0.5, speedRoll, 0.5, 0.5, 0.5];
-      let randomIndex = 0;
-      const solution = solveShot({
-        from,
-        type,
-        direction: 1,
-        aimX: 0,
-        depth: SHOTS[type].dep,
-        contactQuality: 0.8,
-        extraError: 0,
-        ballY: from.y,
-        random: () => randomValues[randomIndex++] ?? 0.5,
-      });
-      assert.equal(randomIndex, 5);
-      const landing = simLand({ ...from, ...solution });
-      assert.equal(landing.net, false, `${type} speedRoll=${speedRoll}`);
-      assert.ok(landing.z > 0, `${type} は相手コートに入る`);
-      assert.ok(
-        Math.abs(landing.z) >= minZ &&
-          Math.abs(landing.z) <= maxZ,
-        `${type} z=${landing.z}`,
-      );
-    }
+test("U28': solveShotのSTOP/FLICKは接触品質に応じた統計的リスクを持つ", () => {
+  function seededRandom(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 4294967296;
+    };
   }
 
-  const aiFrom = { x: 0, y: 14.98, z: 75.87 };
-  for (const aimRoll of [0, 1]) {
-    for (const depthScale of [0.9, 1.1]) {
-      for (const sideRoll of [0, 1]) {
-        for (const speedRoll of [0, 1]) {
-          for (const contactQuality of [1, 0.25]) {
-            for (const elevationRoll of [0, 1]) {
-              for (const azimuthRoll of [0, 1]) {
-                for (const speedErrorRoll of [0, 1]) {
-                  const randomValues = [
-                    sideRoll,
-                    speedRoll,
-                    elevationRoll,
-                    azimuthRoll,
-                    speedErrorRoll,
-                  ];
-                  let randomIndex = 0;
-                  const solution = solveShot({
-                    from: aiFrom,
-                    type: "STOP",
-                    direction: -1,
-                    aimX:
-                      -HW *
-                      0.72 *
-                      (0.6 + 0.4 * aimRoll),
-                    depth: SHOTS.STOP.dep * depthScale,
-                    contactQuality,
-                    extraError: 0,
-                    ballY: aiFrom.y,
-                    random: () =>
-                      randomValues[randomIndex++] ?? 0.5,
-                  });
-                  assert.equal(randomIndex, 5);
-                  const landing = simLand({
-                    ...aiFrom,
-                    ...solution,
-                  });
-                  assert.equal(
-                    landing.net,
-                    false,
-                    `AI STOP aim=${aimRoll} depth=${depthScale} quality=${contactQuality}`,
-                  );
-                  assert.ok(
-                    landing.z < 0,
-                    `AI STOP は相手コートに入る z=${landing.z}`,
-                  );
-                  assert.ok(
-                    Math.abs(landing.z) >= 18 &&
-                      Math.abs(landing.z) <= 46,
-                    `AI STOP z=${landing.z}`,
-                  );
-                }
-              }
+  const touchPoints: readonly { x: number; y: number; absZ: number }[] =
+    (() => {
+      const generated: { x: number; y: number; absZ: number }[] = [];
+      for (const absZ of [34, 45, 55, 65, 75, 87]) {
+        for (const y of [7, 14, 21]) {
+          for (const x of [0, 45, -80]) {
+            generated.push({ x, y, absZ });
+          }
+        }
+      }
+      return generated;
+    })();
+
+  type TableTopShot = "STOP" | "FLICK";
+
+  function touchDepth(type: TableTopShot, roll: number): number {
+    return type === "STOP"
+      ? SHOTS.STOP.dep * (0.9 + 0.2 * roll)
+      : SHOTS.FLICK.dep * (0.85 + 0.3 * roll);
+  }
+
+  function touchAimX(x: number, roll: number): number {
+    return -Math.sign(x) * HW * 0.72 * (0.6 + 0.4 * roll);
+  }
+
+  type Outcome = "net" | "ownSide" | "out" | "ok";
+
+  function classifyLanding(
+    landing: ReturnType<typeof simLand>,
+    direction: 1 | -1,
+  ): Outcome {
+    if (landing.net) {
+      return "net";
+    }
+    if (landing.z * direction <= 0) {
+      return "ownSide";
+    }
+    if (!onTable(landing.x, landing.z) || landing.timeout) {
+      return "out";
+    }
+    return "ok";
+  }
+
+  function percentile(sorted: readonly number[], ratio: number): number {
+    if (sorted.length === 0) {
+      return 0;
+    }
+    const index = Math.min(
+      sorted.length - 1,
+      Math.floor(ratio * sorted.length),
+    );
+    return sorted[index] ?? 0;
+  }
+
+  // a. 確率エンベロープ（両方向・全品質帯）。§5.2の実測に±3pt前後の幅を持たせた判定値。
+  const qualities = [1, 0.75, 0.5, 0.25] as const;
+  const envelope: Record<
+    TableTopShot,
+    Record<(typeof qualities)[number], readonly [number, number]>
+  > = {
+    STOP: {
+      1: [0.5, 4.0],
+      0.75: [2.5, 8.0],
+      0.5: [6.5, 13.0],
+      0.25: [11.5, 19.5],
+    },
+    FLICK: {
+      1: [6.0, 12.5],
+      0.75: [8.0, 15.0],
+      0.5: [11.0, 18.5],
+      0.25: [14.5, 22.0],
+    },
+  };
+  const landingBounds: Record<
+    TableTopShot,
+    { p50: readonly [number, number]; p2Min: number; p98Max: number }
+  > = {
+    STOP: { p50: [28, 40], p2Min: 12, p98Max: 66 },
+    FLICK: { p50: [88, 108], p2Min: 52, p98Max: 137 },
+  };
+
+  for (const type of ["STOP", "FLICK"] as const) {
+    for (const direction of [1, -1] as const) {
+      const draw = seededRandom(20260730);
+      for (const quality of qualities) {
+        let ownSide = 0;
+        const landed: number[] = [];
+        for (const point of touchPoints) {
+          const from = {
+            x: point.x,
+            y: point.y,
+            z: -direction * point.absZ,
+          };
+          for (let trial = 0; trial < 40; trial += 1) {
+            const depth = touchDepth(type, draw());
+            const aimX = touchAimX(point.x, draw());
+            let consumed = 0;
+            const solution = solveShot({
+              from,
+              type,
+              direction,
+              aimX,
+              depth,
+              contactQuality: quality,
+              extraError: 0,
+              ballY: point.y,
+              random: () => {
+                consumed += 1;
+                return draw();
+              },
+            });
+            assert.equal(
+              consumed,
+              5,
+              `U28'-a ${type} dir=${direction} q=${quality} 乱数消費`,
+            );
+            const landing = simLand({ ...from, ...solution });
+            const outcome = classifyLanding(landing, direction);
+            if (outcome === "ownSide") {
+              ownSide += 1;
+            } else if (outcome === "ok") {
+              landed.push(Math.abs(landing.z));
             }
           }
         }
+        assert.equal(
+          ownSide,
+          0,
+          `U28'-a ${type} dir=${direction} q=${quality} は自陣落下0件`,
+        );
+        const total = touchPoints.length * 40;
+        const missRate = ((total - landed.length) / total) * 100;
+        const [min, max] = envelope[type][quality];
+        assert.ok(
+          missRate >= min && missRate <= max,
+          `U28'-a ${type} dir=${direction} q=${quality} missRate=${missRate.toFixed(1)}% expected ${min}-${max}%`,
+        );
+        landed.sort((a, b) => a - b);
+        const p2 = percentile(landed, 0.02);
+        const p50 = percentile(landed, 0.5);
+        const p98 = percentile(landed, 0.98);
+        const bounds = landingBounds[type];
+        assert.ok(
+          p50 >= bounds.p50[0] && p50 <= bounds.p50[1],
+          `U28'-a ${type} dir=${direction} q=${quality} p50=${p50}`,
+        );
+        assert.ok(
+          p2 >= bounds.p2Min,
+          `U28'-a ${type} dir=${direction} q=${quality} p2=${p2}`,
+        );
+        assert.ok(
+          p98 <= bounds.p98Max,
+          `U28'-a ${type} dir=${direction} q=${quality} p98=${p98}`,
+        );
       }
     }
   }
 
-  const blunderRandom = [0, 0, 0, 0, 0];
-  let blunderRandomIndex = 0;
-  const blunderSolution = solveShot({
-    from: aiFrom,
-    type: "STOP",
-    direction: -1,
-    aimX: -HW * 0.72 * 0.6,
-    depth: SHOTS.STOP.dep * 0.9,
-    contactQuality: 0.25,
-    extraError: 0.075,
-    ballY: aiFrom.y,
-    random: () =>
-      blunderRandom[blunderRandomIndex++] ?? 0.5,
-  });
-  assert.equal(blunderRandomIndex, 5);
-  const blunderLanding = simLand({
-    ...aiFrom,
-    ...blunderSolution,
-  });
-  assert.ok(
-    blunderLanding.z > 0,
-    "明示的なblunderは最終STOP帯保証の対象外",
-  );
+  // b. 誤差端＋狙い端の全数列挙（13824通り／方向）。aimRoll/depthRoll/side/margin/仰角誤差/方位角誤差/速度誤差の7軸を{0,1}で網羅する。
+  function runSubcaseB(
+    type: TableTopShot,
+    direction: 1 | -1,
+  ): { total: number; ownSide: number; maxAbsZ: number } {
+    let total = 0;
+    let ownSide = 0;
+    let maxAbsZ = 0;
+    for (const point of touchPoints) {
+      const from = { x: point.x, y: point.y, z: -direction * point.absZ };
+      for (const quality of [1, 0.25] as const) {
+        for (let mask = 0; mask < 128; mask += 1) {
+          const depthRoll = (mask >> 0) & 1;
+          const aimRoll = (mask >> 1) & 1;
+          const sideRoll = (mask >> 2) & 1;
+          const marginRoll = (mask >> 3) & 1;
+          const elevErrRoll = (mask >> 4) & 1;
+          const azimErrRoll = (mask >> 5) & 1;
+          const speedErrRoll = (mask >> 6) & 1;
+          const depth = touchDepth(type, depthRoll);
+          const aimX = touchAimX(point.x, aimRoll);
+          const values = [
+            sideRoll,
+            marginRoll,
+            elevErrRoll,
+            azimErrRoll,
+            speedErrRoll,
+          ];
+          let index = 0;
+          const solution = solveShot({
+            from,
+            type,
+            direction,
+            aimX,
+            depth,
+            contactQuality: quality,
+            extraError: 0,
+            ballY: point.y,
+            random: () => values[index++] ?? 0.5,
+          });
+          const landing = simLand({ ...from, ...solution });
+          total += 1;
+          const outcome = classifyLanding(landing, direction);
+          if (outcome === "ownSide") {
+            ownSide += 1;
+          } else if (outcome === "ok") {
+            maxAbsZ = Math.max(maxAbsZ, Math.abs(landing.z));
+          }
+        }
+      }
+    }
+    return { total, ownSide, maxAbsZ };
+  }
+
+  for (const type of ["STOP", "FLICK"] as const) {
+    const forward = runSubcaseB(type, 1);
+    const backward = runSubcaseB(type, -1);
+    assert.equal(forward.total, 13824, `U28'-b ${type} 総数`);
+    assert.deepEqual(
+      { total: forward.total, ownSide: forward.ownSide },
+      { total: backward.total, ownSide: backward.ownSide },
+      `U28'-b ${type} は両方向で件数が完全一致`,
+    );
+    const ownSideRate = forward.ownSide / forward.total;
+    assert.ok(
+      ownSideRate < 0.02,
+      `U28'-b ${type} 自陣落下率=${(ownSideRate * 100).toFixed(2)}%`,
+    );
+    assert.ok(
+      forward.maxAbsZ <= HL && backward.maxAbsZ <= HL,
+      `U28'-b ${type} 成立時abs(z)が台上`,
+    );
+  }
+
+  // c. v0.6.0事象の回帰ガード。実AI打点 z=75.87 / y=14.98 でSTOPが自陣へ落ちないこと。
+  for (const quality of [1, 0.25] as const) {
+    const draw = seededRandom(20260730);
+    const from = { x: 0, y: 14.98, z: 75.87 };
+    let ownSide = 0;
+    for (let trial = 0; trial < 4000; trial += 1) {
+      const depth = touchDepth("STOP", draw());
+      const aimX = -HW * 0.72 * (0.6 + 0.4 * draw());
+      const solution = solveShot({
+        from,
+        type: "STOP",
+        direction: -1,
+        aimX,
+        depth,
+        contactQuality: quality,
+        extraError: 0,
+        ballY: from.y,
+        random: draw,
+      });
+      const landing = simLand({ ...from, ...solution });
+      if (classifyLanding(landing, -1) === "ownSide") {
+        ownSide += 1;
+      }
+    }
+    assert.equal(
+      ownSide,
+      0,
+      `U28'-c STOP q=${quality} 実AI打点は自陣落下0件`,
+    );
+  }
+
+  // d. blunderの分離。extraError=0.075のミス率は同一条件の0を厳に上回る。
+  function subcaseDMissRate(
+    type: TableTopShot,
+    quality: number,
+    extraError: number,
+  ): number {
+    const draw = seededRandom(20260730);
+    let miss = 0;
+    let total = 0;
+    for (const direction of [1, -1] as const) {
+      for (const point of touchPoints) {
+        const from = {
+          x: point.x,
+          y: point.y,
+          z: -direction * point.absZ,
+        };
+        for (let trial = 0; trial < 40; trial += 1) {
+          const depth = touchDepth(type, draw());
+          const aimX = touchAimX(point.x, draw());
+          const solution = solveShot({
+            from,
+            type,
+            direction,
+            aimX,
+            depth,
+            contactQuality: quality,
+            extraError,
+            ballY: point.y,
+            random: draw,
+          });
+          const landing = simLand({ ...from, ...solution });
+          total += 1;
+          if (classifyLanding(landing, direction) !== "ok") {
+            miss += 1;
+          }
+        }
+      }
+    }
+    return (miss / total) * 100;
+  }
+
+  for (const type of ["STOP", "FLICK"] as const) {
+    for (const quality of [1, 0.25]) {
+      const baseline = subcaseDMissRate(type, quality, 0);
+      const blunder = subcaseDMissRate(type, quality, 0.075);
+      assert.ok(
+        blunder > baseline,
+        `U28'-d ${type} q=${quality} blunderは非blunderのミス率を厳に上回る (${baseline.toFixed(1)}% -> ${blunder.toFixed(1)}%)`,
+      );
+    }
+  }
 });
 
 test("バウンド有無で失点者と理由が決まる", () => {

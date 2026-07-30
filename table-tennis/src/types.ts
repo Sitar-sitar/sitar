@@ -37,8 +37,20 @@ export interface LevelConfig {
   lob: number;
 }
 
+export type ShotSpeed =
+  /** 絶対速度を抽選する。乱数1回。 */
+  | { readonly model: "absolute"; readonly sp: readonly [number, number] }
+  /** 目標へ届く必要速度をそのまま使う（高い弧）。乱数0回。 */
+  | { readonly model: "arc"; readonly elev: number }
+  /** 必要速度に余裕率を掛ける（台上技術）。乱数1回。 */
+  | {
+      readonly model: "touch";
+      readonly elev: number;
+      readonly margin: readonly [number, number];
+    };
+
 export interface ShotConfig {
-  sp: readonly [number, number];
+  speed: ShotSpeed;
   spin: number;
   dep: number;
   err: number;

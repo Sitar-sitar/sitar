@@ -16,10 +16,8 @@ import type {
   ServeLengthProfile,
   ServeSolution,
   ShotId,
+  ShotSpeed,
 } from "./types.ts";
-
-const STOP_DISTANCE_ELEVATION = 0.6;
-const STOP_SPEED_MARGIN = 1.03;
 
 export function integrate(ball: BallVector, dt: number): void {
   const horizontalSpeed = Math.hypot(ball.vx, ball.vz);
@@ -347,87 +345,84 @@ export function solveShot(input: {
   const targetX = Math.max(-HW + 7, Math.min(HW - 7, aimX));
   const side = (random() - 0.5) * 0.25;
   const spin = shot.spin;
-  let elevation: number;
-  let azimuth: number;
-  let speed: number;
 
-  if (type === "LOB") {
-    const result = solveSpeed(
-      from,
-      targetX,
-      targetZ,
-      1.02,
-      spin,
-      side,
-    );
-    speed = result.speed;
-    azimuth = result.azim;
-    elevation = 1.02;
-  } else {
-    speed =
-      shot.sp[0] + random() * (shot.sp[1] - shot.sp[0]);
-    if (type === "SMASH") {
-      speed *=
-        0.86 +
-        0.14 * Math.min(1, Math.max(0, (ballY - 20) / 30));
+  // 打ち出しの3要素を速度モデルごとに解く。乱数消費は arc=0 / touch=1 / absolute=1。
+  function launchPlan(
+    speedSpec: ShotSpeed,
+  ): { speed: number; azimuth: number; elevation: number } {
+    switch (speedSpec.model) {
+      case "arc": {
+        const result = solveSpeed(
+          from,
+          targetX,
+          targetZ,
+          speedSpec.elev,
+          spin,
+          side,
+        );
+        return {
+          speed: result.speed,
+          azimuth: result.azim,
+          elevation: speedSpec.elev,
+        };
+      }
+      case "touch": {
+        const { elev, margin } = speedSpec;
+        const result = solveSpeed(
+          from,
+          targetX,
+          targetZ,
+          elev,
+          spin,
+          side,
+        );
+        const roll = random();
+        return {
+          speed:
+            result.speed *
+            (margin[0] + roll * (margin[1] - margin[0])),
+          azimuth: result.azim,
+          elevation: elev,
+        };
+      }
+      case "absolute": {
+        const { sp } = speedSpec;
+        let speed = sp[0] + random() * (sp[1] - sp[0]);
+        if (type === "SMASH") {
+          speed *=
+            0.86 +
+            0.14 * Math.min(1, Math.max(0, (ballY - 20) / 30));
+        }
+        const result = solveAngle(
+          from,
+          targetX,
+          targetZ,
+          speed,
+          spin,
+          side,
+        );
+        return { speed, azimuth: result.azim, elevation: result.elev };
+      }
     }
-    const result = solveAngle(
+  }
+
+  // 誤差適用で3要素すべてを更新するため、3つとも可変で受ける
+  let { speed, elevation, azimuth } = launchPlan(shot.speed);
+
+  // arc（LOB）は現行どおり ensureNetClear を通さない。この条件は必須。
+  if (
+    shot.speed.model !== "arc" &&
+    !extraError &&
+    contactQuality > 0.3
+  ) {
+    elevation = ensureNetClear(
       from,
-      targetX,
-      targetZ,
+      elevation,
+      azimuth,
       speed,
       spin,
       side,
     );
-    elevation = result.elev;
-    azimuth = result.azim;
-    if (!extraError && contactQuality > 0.3) {
-      elevation = ensureNetClear(
-        from,
-        elevation,
-        azimuth,
-        speed,
-        spin,
-        side,
-      );
-    }
-    if (type === "STOP") {
-      const nominalLanding = simLand({
-        ...from,
-        ...launch(speed, elevation, azimuth),
-        spin,
-        side,
-      });
-      if (
-        nominalLanding.net ||
-        nominalLanding.z * direction <= 0
-      ) {
-        const required = solveSpeed(
-          from,
-          targetX,
-          targetZ,
-          STOP_DISTANCE_ELEVATION,
-          spin,
-          side,
-        );
-        speed = Math.max(
-          speed,
-          required.speed * STOP_SPEED_MARGIN,
-        );
-        azimuth = required.azim;
-        elevation = STOP_DISTANCE_ELEVATION;
-        if (!extraError && contactQuality > 0.3) {
-          elevation = ensureNetClear(
-            from,
-            elevation,
-            azimuth,
-            speed,
-            spin,
-            side,
-          );
-        }
-      }
-    }
   }
 
   const error =
@@ -435,34 +430,6 @@ export function solveShot(input: {
   elevation += (random() * 2 - 1) * error;
   azimuth += (random() * 2 - 1) * error * 1.5;
   speed *= 1 + (random() * 2 - 1) * error * 1.6;
-
-  if (type === "STOP" && extraError === 0) {
-    const finalLanding = simLand({
-      ...from,
-      ...launch(speed, elevation, azimuth),
-      spin,
-      side,
-    });
-    const finalDepth = Math.abs(finalLanding.z);
-    if (
-      finalLanding.net ||
-      finalLanding.z * direction <= 0 ||
-      finalDepth < 18 ||
-      finalDepth > 46
-    ) {
-      const required = solveSpeed(
-        from,
-        targetX,
-        targetZ,
-        STOP_DISTANCE_ELEVATION,
-        spin,
-        side,
-      );
-      speed = required.speed * STOP_SPEED_MARGIN;
-      azimuth = required.azim;
-      elevation = STOP_DISTANCE_ELEVATION;
-    }
-  }
 
   return {
     ...launch(speed, elevation, azimuth),
