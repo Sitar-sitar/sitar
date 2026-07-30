@@ -198,6 +198,75 @@ test("AIサーブから自動でラリーが始まる", async ({ page }) => {
   );
 });
 
+test("短い球に合成フリックで台上技術が出る", async ({ page }) => {
+  await page.addInitScript(() => {
+    const values = [0.6, 0, 0, 0.5, 0.5, 0.5, 0.5];
+    let index = 0;
+    Math.random = () => values[index++] ?? 0.5;
+  });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-served-serve-length",
+    "short",
+    { timeout: 3000 },
+  );
+
+  await page.evaluate(async () => {
+    const canvas = document.querySelector("#cv");
+    const flash = document.querySelector("#flash");
+    if (
+      !(canvas instanceof HTMLCanvasElement) ||
+      !(flash instanceof HTMLDivElement)
+    ) {
+      throw new Error("E14に必要なDOMが見つかりません。");
+    }
+    const wait = (ms) =>
+      new Promise((resolve) => window.setTimeout(resolve, ms));
+    const dispatch = (type, init) => {
+      canvas.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          isPrimary: true,
+          pointerType: "touch",
+          ...init,
+        }),
+      );
+    };
+
+    await wait(730);
+    const rect = canvas.getBoundingClientRect();
+    const pointerId = 1;
+    const x = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height * 0.1;
+    dispatch("pointerdown", {
+      pointerId,
+      clientX: x,
+      clientY: startY,
+      buttons: 1,
+    });
+    for (let move = 1; move <= 4; move += 1) {
+      await wait(move === 1 ? 10 : 80);
+      dispatch("pointermove", {
+        pointerId,
+        clientX: x,
+        clientY: startY + rect.height * move * 0.18,
+        buttons: 1,
+      });
+    }
+    dispatch("pointerup", {
+      pointerId,
+      clientX: x,
+      clientY: startY + rect.height * 4 * 0.18,
+      buttons: 0,
+    });
+  });
+
+  await expect(page.locator("#flash")).toHaveText(/ストップ|フリック/u);
+});
+
 test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始まる", async ({
   page,
 }) => {
