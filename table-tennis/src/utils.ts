@@ -1,6 +1,9 @@
 import {
   CONTACT_PLANE_FAR,
   CONTACT_PLANE_NEAR,
+  FIXED_STEP,
+  MAX_FRAME_DELTA,
+  MAX_SUBSTEPS,
   P_DEPTH_SPEED,
   PADDLE_BLADE_SCALE,
   PADDLE_DEPTH_RISE,
@@ -18,6 +21,36 @@ import {
   PADDLE_SWING_LIFT,
   PADDLE_SWING_PUSH,
 } from "./config.ts";
+
+export interface FixedStepPlan {
+  frameDelta: number;
+  steps: number;
+  nextAccumulator: number;
+  dropped: boolean;
+}
+
+export function planFixedSteps(
+  accumulator: number,
+  rawFrameDelta: number,
+): FixedStepPlan {
+  const frameDelta =
+    Number.isFinite(rawFrameDelta) && rawFrameDelta > 0
+      ? Math.min(rawFrameDelta, MAX_FRAME_DELTA)
+      : 0;
+  let nextAccumulator =
+    Number.isFinite(accumulator) && accumulator > 0 ? accumulator : 0;
+  nextAccumulator += frameDelta;
+  let steps = 0;
+  while (nextAccumulator >= FIXED_STEP && steps < MAX_SUBSTEPS) {
+    nextAccumulator -= FIXED_STEP;
+    steps += 1;
+  }
+  const dropped = steps >= MAX_SUBSTEPS;
+  if (dropped) {
+    nextAccumulator = 0;
+  }
+  return { frameDelta, steps, nextAccumulator, dropped };
+}
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

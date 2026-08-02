@@ -17,6 +17,7 @@ import type {
   ServeLength,
   ServeType,
   StatsPhase,
+  StatsUnavailableReason,
 } from "./types.ts";
 
 interface UiHandlers {
@@ -482,16 +483,28 @@ export class Ui {
       stats === null ? "" : formatRecordLabel(stats);
   }
 
-  public setStatsPhase(phase: StatsPhase): void {
+  public setStatsPhase(
+    phase: StatsPhase,
+    reason: StatsUnavailableReason | null = null,
+  ): void {
     const unavailable = phase === "unavailable";
     const loading = phase === "loading";
     this.openPlayers.disabled = phase !== "ready";
     this.openStats.disabled = phase !== "ready";
-    this.playerNotice.textContent = loading
-      ? "戦績を準備しています…"
-      : unavailable
-        ? "この端末では戦績を保存できません。"
-        : "";
+    if (loading) {
+      this.playerNotice.textContent = "戦績を準備しています…";
+      return;
+    }
+    if (!unavailable) {
+      this.playerNotice.textContent = "";
+      return;
+    }
+    this.playerNotice.textContent =
+      reason === "invalid-data"
+        ? "保存データを読み込めません。ゲームは続けられます。"
+        : reason === "version-change"
+          ? "戦績データを更新するため、ページを再読み込みしてください。ゲームは続けられます。"
+          : "この端末では戦績を保存できません。";
   }
 
   public setResultRecord(record: ResultRecord): void {

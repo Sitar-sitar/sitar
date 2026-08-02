@@ -135,6 +135,51 @@ test("9種類のサーブを3×3で選択して実行できる", async ({ page }
   await expect(page.locator("body")).toHaveAttribute("data-phase", "rally");
 });
 
+test("Service Workerは他世代キャッシュの同一URLを参照しない", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.waitForFunction(
+    () => navigator.serviceWorker.controller !== null,
+    undefined,
+    { timeout: 10_000 },
+  );
+  await page.reload();
+
+  const result = await page.evaluate(async () => {
+    const currentName = (await caches.keys()).find(
+      (key) => key === "table-tennis-v0.6.2",
+    );
+    if (!currentName) throw new Error("現行キャッシュがありません。");
+    const current = await caches.open(currentName);
+    const appUrl = new URL("./assets/app.js", location.href).href;
+    await current.delete(appUrl);
+    const staleName = "table-tennis-stale-e22";
+    const stale = await caches.open(staleName);
+    const poison = "SECRET-POISON-E22";
+    await stale.put(
+      appUrl,
+      new Response(poison, {
+        headers: { "content-type": "text/javascript" },
+      }),
+    );
+    try {
+      const response = await fetch(appUrl, { cache: "reload" });
+      const body = await response.text();
+      const refilled = await current.match(appUrl);
+      return {
+        poisoned: body.includes(poison),
+        refilled: Boolean(refilled),
+      };
+    } finally {
+      await caches.delete(staleName);
+    }
+  });
+
+  expect(result).toEqual({ poisoned: false, refilled: true });
+});
+
 test("サーブ長3種を選択できポイントと再試合をまたいで保持する", async ({
   page,
 }) => {

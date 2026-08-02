@@ -1,4 +1,10 @@
 import { sortPlayers } from "./stats.ts";
+import {
+  parseMatchRecord,
+  parsePlayerRecord,
+  parseSelectedPlayerSetting,
+  type SettingRecord,
+} from "./storage-schema.ts";
 import type {
   MatchRecord,
   PlayerRecord,
@@ -9,11 +15,6 @@ import { formatUuidV4, normalizePlayerName } from "./utils.ts";
 const DATABASE_NAME = "table-tennis";
 const DATABASE_VERSION = 1;
 const SELECTED_PLAYER_KEY = "selectedPlayerId";
-
-interface SettingRecord {
-  key: string;
-  value: string;
-}
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -111,7 +112,9 @@ export function createId(): string {
 export class StatsStore {
   private constructor(private readonly database: IDBDatabase) {}
 
-  public static async open(): Promise<StatsStore | null> {
+  public static async open(
+    onInvalidated: () => void = () => undefined,
+  ): Promise<StatsStore | null> {
     if (typeof globalThis.indexedDB === "undefined") {
       return null;
     }
@@ -154,7 +157,16 @@ export class StatsStore {
             request.result.close();
             return;
           }
-          finish(new StatsStore(request.result));
+          const database = request.result;
+          let invalidated = false;
+          database.addEventListener("versionchange", () => {
+            database.close();
+            if (!invalidated) {
+              invalidated = true;
+              onInvalidated();
+            }
+          });
+          finish(new StatsStore(database));
         });
         request.addEventListener("error", () => {
           finish(null);
@@ -174,11 +186,11 @@ export class StatsStore {
       "players",
       "readonly",
       (transaction) =>
-        requestResult<PlayerRecord[]>(
+        requestResult<unknown[]>(
           transaction.objectStore("players").getAll(),
         ),
     );
-    return sortPlayers(players);
+    return sortPlayers(players.map(parsePlayerRecord));
   }
 
   public async addPlayer(name: string): Promise<PlayerRecord> {
@@ -221,12 +233,13 @@ export class StatsStore {
         "readwrite",
         async (transaction) => {
           const store = transaction.objectStore("players");
-          const player = await requestResult<PlayerRecord | undefined>(
+          const rawPlayer = await requestResult<unknown>(
             store.get(id),
           );
-          if (!player) {
+          if (rawPlayer === undefined) {
             throw new Error("プレイヤーが見つかりません。");
           }
+          const player = parsePlayerRecord(rawPlayer);
           const updated = { ...player, name: normalizedName };
           await requestResult(store.put(updated));
           return updated;
@@ -254,12 +267,13 @@ export class StatsStore {
           throw new Error("最後のプレイヤーは削除できません。");
         }
 
-        const player = await requestResult<PlayerRecord | undefined>(
+        const rawPlayer = await requestResult<unknown>(
           playersStore.get(id),
         );
-        if (!player) {
+        if (rawPlayer === undefined) {
           throw new Error("プレイヤーが見つかりません。");
         }
+        parsePlayerRecord(rawPlayer);
 
         await requestResult(playersStore.delete(id));
         const matchesStore = transaction.objectStore("matches");
@@ -269,13 +283,16 @@ export class StatsStore {
         );
 
         const players = sortPlayers(
-          await requestResult<PlayerRecord[]>(playersStore.getAll()),
+          (await requestResult<unknown[]>(playersStore.getAll())).map(
+            parsePlayerRecord,
+          ),
         );
         const settingsStore = transaction.objectStore("settings");
-        const selected =
-          await requestResult<SettingRecord | undefined>(
+        const selected = parseSelectedPlayerSetting(
+          await requestResult<unknown>(
             settingsStore.get(SELECTED_PLAYER_KEY),
-          );
+          ),
+        );
         let selectedPlayerId = selected?.value ?? null;
         if (selectedPlayerId === id) {
           selectedPlayerId = players[0]?.id ?? null;
@@ -300,11 +317,11 @@ export class StatsStore {
       "settings",
       "readonly",
       (transaction) =>
-        requestResult<SettingRecord | undefined>(
+        requestResult<unknown>(
           transaction.objectStore("settings").get(SELECTED_PLAYER_KEY),
         ),
     );
-    return selected?.value ?? null;
+    return parseSelectedPlayerSetting(selected)?.value ?? null;
   }
 
   public async setSelectedPlayerId(id: string): Promise<void> {
@@ -313,12 +330,13 @@ export class StatsStore {
       ["players", "settings"],
       "readwrite",
       async (transaction) => {
-        const player = await requestResult<PlayerRecord | undefined>(
+        const rawPlayer = await requestResult<unknown>(
           transaction.objectStore("players").get(id),
         );
-        if (!player) {
+        if (rawPlayer === undefined) {
           throw new Error("プレイヤーが見つかりません。");
         }
+        parsePlayerRecord(rawPlayer);
         await requestResult(
           transaction.objectStore("settings").put({
             key: SELECTED_PLAYER_KEY,
@@ -358,12 +376,13 @@ export class StatsStore {
       ["players", "matches"],
       "readwrite",
       async (transaction) => {
-        const player = await requestResult<PlayerRecord | undefined>(
+        const rawPlayer = await requestResult<unknown>(
           transaction.objectStore("players").get(record.playerId),
         );
-        if (!player) {
+        if (rawPlayer === undefined) {
           throw new Error("記録先のプレイヤーが見つかりません。");
         }
+        parsePlayerRecord(rawPlayer);
         const match: MatchRecord = {
           ...record,
           id: createId(),
@@ -382,14 +401,14 @@ export class StatsStore {
       "matches",
       "readonly",
       (transaction) =>
-        requestResult<MatchRecord[]>(
+        requestResult<unknown[]>(
           transaction
             .objectStore("matches")
             .index("playerId")
             .getAll(IDBKeyRange.only(playerId)),
         ),
     );
-    return matches.slice().sort((left, right) => {
+    return matches.map(parseMatchRecord).sort((left, right) => {
       if (left.playedAt !== right.playedAt) {
         return left.playedAt > right.playedAt ? -1 : 1;
       }

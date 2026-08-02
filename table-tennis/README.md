@@ -1,6 +1,6 @@
 # 卓球
 
-スマートフォンを主対象とし、PCブラウザでも遊べる1人用3D卓球ゲームです。PWAに対応しており、ホーム画面へ追加するとアプリのように起動できます。v0.6.0では、9種類・3段階の長さのサーブに加えて、短い球への台上技術を追加しました。
+スマートフォンを主対象とし、PCブラウザでも遊べる1人用3D卓球ゲームです。PWAに対応しており、ホーム画面へ追加するとアプリのように起動できます。v0.6.0では、9種類・3段階の長さのサーブに加えて、短い球への台上技術を追加しました。v0.6.2では機能を増やさず、保存データ破損時の安全な縮退、DB更新時の接続解放、ゲームループとPWAキャッシュの安定性を強化しています。
 
 ## 遊び方
 
@@ -79,6 +79,7 @@ npm run build
 npm run check:dist
 npm run test:unit
 npm run test:e2e
+npm run test:e2e:stability
 ```
 
 ブラウザテストは次の3環境で実行します。
@@ -127,6 +128,7 @@ Pull Requestでは `.github/workflows/test-table-tennis.yml` が同じ全検証�
 │   ├── physics.ts
 │   ├── rules.ts
 │   ├── stats.ts
+│   ├── storage-schema.ts
 │   ├── storage.ts
 │   ├── utils.ts
 │   ├── input.ts
@@ -150,7 +152,9 @@ Pull Requestでは `.github/workflows/test-table-tennis.yml` が同じ全検証�
 │   ├── app-contract.test.mjs
 │   ├── game-core.test.ts
 │   ├── opponent-ai.test.ts
+│   ├── storage-schema.test.ts
 │   ├── stats.test.ts
+│   ├── timing.test.ts
 │   ├── player-stats.spec.js
 │   └── game-smoke.spec.js
 ├── icons/

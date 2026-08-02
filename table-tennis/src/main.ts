@@ -5,6 +5,7 @@ import { Game } from "./game.ts";
 import { InputController } from "./input.ts";
 import { Renderer } from "./render.ts";
 import { formatRecordLabel, summarize } from "./stats.ts";
+import { StorageDataError } from "./storage-schema.ts";
 import { StatsStore } from "./storage.ts";
 import type {
   MatchResult,
@@ -12,6 +13,7 @@ import type {
   PlayerSelection,
   PlayerStats,
   StatsPhase,
+  StatsUnavailableReason,
 } from "./types.ts";
 import { Ui } from "./ui.ts";
 
@@ -51,12 +53,31 @@ function errorMessage(error: unknown): string {
     : "操作に失敗しました。";
 }
 
-function setStatsUnavailable(): void {
+function unavailableReason(error: unknown): StatsUnavailableReason {
+  return error instanceof StorageDataError
+    ? "invalid-data"
+    : "open-failed";
+}
+
+function setStatsUnavailable(
+  reason: StatsUnavailableReason,
+  error?: unknown,
+): void {
   statsPhase = "unavailable";
+  store = null;
   selectedPlayerId = null;
   selectedPlayer = null;
   game.setPlayer(null);
-  ui.setStatsPhase("unavailable");
+  ui.setStatsPhase("unavailable", reason);
+  const details: Record<string, string> = { reason };
+  if (error instanceof Error) {
+    details.error = error.name;
+  }
+  if (error instanceof StorageDataError) {
+    details.store = error.store;
+    details.field = error.field;
+  }
+  console.warn("戦績機能を停止しました。", details);
 }
 
 function readyStore(): StatsStore {
@@ -111,14 +132,14 @@ async function readSelection(
 
 async function recoverSavedState(): Promise<void> {
   if (store === null) {
-    setStatsUnavailable();
+    setStatsUnavailable("open-failed");
     return;
   }
   try {
     const selection = await readSelection(store);
     await applySelection(selection, true);
-  } catch {
-    setStatsUnavailable();
+  } catch (error) {
+    setStatsUnavailable(unavailableReason(error), error);
   }
 }
 
@@ -130,6 +151,11 @@ async function runPlayerOperation(
   try {
     await operation(readyStore());
   } catch (error) {
+    if (error instanceof StorageDataError) {
+      setStatsUnavailable("invalid-data", error);
+      ui.setPlayerError("保存データを読み込めません。");
+      return;
+    }
     ui.setPlayerError(errorMessage(error));
     await recoverSavedState();
   } finally {
@@ -140,10 +166,16 @@ async function runPlayerOperation(
 async function bootstrapStats(): Promise<void> {
   statsPhase = "loading";
   ui.setStatsPhase("loading");
+  if (typeof globalThis.indexedDB === "undefined") {
+    setStatsUnavailable("unsupported");
+    return;
+  }
   try {
-    const opened = await StatsStore.open();
+    const opened = await StatsStore.open(() => {
+      setStatsUnavailable("version-change");
+    });
     if (opened === null) {
-      setStatsUnavailable();
+      setStatsUnavailable("open-failed");
       return;
     }
     store = opened;
@@ -151,9 +183,8 @@ async function bootstrapStats(): Promise<void> {
     statsPhase = "ready";
     await applySelection(selection, false);
     ui.setStatsPhase("ready");
-  } catch {
-    store = null;
-    setStatsUnavailable();
+  } catch (error) {
+    setStatsUnavailable(unavailableReason(error), error);
   }
 }
 
@@ -199,7 +230,10 @@ async function handleMatchEnd(result: MatchResult): Promise<void> {
     ) {
       ui.updatePlayerBar(selectedPlayer.name, stats);
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof StorageDataError) {
+      setStatsUnavailable("invalid-data", error);
+    }
     ui.setResultRecord({
       matchSeq: result.matchSeq,
       status: "failed",

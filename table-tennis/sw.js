@@ -1,4 +1,4 @@
-const CACHE_NAME = "table-tennis-v8";
+const CACHE_NAME = "table-tennis-v0.6.2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -36,7 +36,8 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     (async () => {
-      const cached = await caches.match(event.request);
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(event.request);
       if (cached) return cached;
 
       try {
@@ -45,13 +46,12 @@ self.addEventListener("fetch", (event) => {
           response.ok &&
           new URL(event.request.url).origin === self.location.origin
         ) {
-          const cache = await caches.open(CACHE_NAME);
           await cache.put(event.request, response.clone());
         }
         return response;
       } catch {
         if (event.request.mode === "navigate") {
-          return (await caches.match("./index.html")) ?? Response.error();
+          return (await cache.match("./index.html")) ?? Response.error();
         }
         return Response.error();
       }

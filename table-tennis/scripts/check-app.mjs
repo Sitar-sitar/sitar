@@ -13,6 +13,7 @@ function fail(message) {
 }
 
 const html = await read("index.html");
+const packageJson = JSON.parse(await read("package.json"));
 if (
   !/<script\b(?=[^>]*\btype="module")(?=[^>]*\bsrc="\.\/src\/main\.ts")[^>]*>/u.test(
     html,
@@ -93,6 +94,7 @@ for (const sourcePath of [
   "src/rules.ts",
   "src/stats.ts",
   "src/storage.ts",
+  "src/storage-schema.ts",
   "src/game.ts",
   "src/input.ts",
   "src/render.ts",
@@ -210,6 +212,20 @@ if ((html.match(/\bvite-ignore\b/gu) ?? []).length < 3) {
 
 const serviceWorker = await read("sw.js");
 new vm.Script(serviceWorker, { filename: "sw.js" });
+const cacheName = /const CACHE_NAME = "([^"]+)";/u.exec(
+  serviceWorker,
+)?.[1];
+if (cacheName !== `table-tennis-v${packageJson.version}`) {
+  fail(
+    `Service WorkerのCACHE_NAMEをpackage.jsonの版数に合わせてください（期待: table-tennis-v${packageJson.version}）。`,
+  );
+}
+if (!serviceWorker.includes("const cached = await cache.match(event.request)")) {
+  fail("Service Workerは現行CACHE_NAMEのcache.matchを使用してください。");
+}
+if (/caches\.match\(/u.test(serviceWorker)) {
+  fail("Service Workerは他世代を含むcaches.matchを使用しないでください。");
+}
 for (const appShellPath of [
   "./",
   "./index.html",
@@ -224,6 +240,11 @@ for (const appShellPath of [
   if (!serviceWorker.includes(`"${appShellPath}"`)) {
     fail(`Service Worker のAPP_SHELLに ${appShellPath} がありません。`);
   }
+}
+
+const playwrightConfig = await read("playwright.config.js");
+if (!/workers:\s*process\.env\.CI\s*\?\s*1\s*:\s*undefined/u.test(playwrightConfig)) {
+  fail("PlaywrightはCI時だけworkers=1へ固定してください。");
 }
 
 console.log(

@@ -246,3 +246,9 @@ export interface PlayerStats {
 }
 
 export type StatsPhase = "loading" | "ready" | "unavailable";
+
+export type StatsUnavailableReason =
+  | "unsupported"
+  | "open-failed"
+  | "invalid-data"
+  | "version-change";

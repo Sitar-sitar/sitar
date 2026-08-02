@@ -314,6 +314,7 @@ export const PADDLE_DEPTH_SHRINK = 0.3;
 export const PADDLE_SHADOW_GAP = 0.095;
 export const P_DEPTH_SPEED = 380;
 export const MAX_SUBSTEPS = 12;
+export const MAX_FRAME_DELTA = 0.05;
 export const SWING_DECAY = 6;
 export const AI_SERVE_DELAY_MS = 700;
 export const SERVE_CONTACT_Y = 24;

@@ -6,7 +6,6 @@ import {
   FLOOR,
   HW,
   LEVELS,
-  MAX_SUBSTEPS,
   NET_H,
   NET_HW,
   PADDLE_LIMIT,
@@ -70,7 +69,12 @@ import type {
   Side,
 } from "./types.ts";
 import { Ui } from "./ui.ts";
-import { clamp, moveToward, stepViewZ } from "./utils.ts";
+import {
+  clamp,
+  moveToward,
+  planFixedSteps,
+  stepViewZ,
+} from "./utils.ts";
 
 export class Game {
   public onMatchEnd?: (result: MatchResult) => void;
@@ -281,35 +285,25 @@ export class Game {
   private readonly loop = (timestamp: number): void => {
     requestAnimationFrame(this.loop);
     const seconds = timestamp / 1000;
-    const dt = this.lastFrame
-      ? Math.min(0.05, seconds - this.lastFrame)
-      : 0;
+    const rawFrameDelta = this.lastFrame ? seconds - this.lastFrame : 0;
     this.lastFrame = seconds;
+    const plan = planFixedSteps(this.accumulator, rawFrameDelta);
 
     if (this.state.phase !== "title" && !this.state.paused) {
-      this.accumulator += dt;
-      let steps = 0;
-      while (
-        this.accumulator >= FIXED_STEP &&
-        steps < MAX_SUBSTEPS
-      ) {
+      for (let step = 0; step < plan.steps; step += 1) {
         this.tick(FIXED_STEP);
-        this.accumulator -= FIXED_STEP;
-        steps += 1;
       }
-      if (steps >= MAX_SUBSTEPS) {
-        this.accumulator = 0;
-      }
+      this.accumulator = plan.nextAccumulator;
     }
 
-    this.ui.tickFlash(dt);
+    this.ui.tickFlash(plan.frameDelta);
     this.player.swing = Math.max(
       0,
-      this.player.swing - dt * SWING_DECAY,
+      this.player.swing - plan.frameDelta * SWING_DECAY,
     );
     this.ai.state.swing = Math.max(
       0,
-      this.ai.state.swing - dt * SWING_DECAY,
+      this.ai.state.swing - plan.frameDelta * SWING_DECAY,
     );
     this.renderer?.render();
   };

@@ -42,8 +42,9 @@ test("Service Workerはアプリシェルをキャッシュする", async () => 
 
   assert.match(serviceWorker, /caches\.open\(CACHE_NAME\)/u);
   assert.match(serviceWorker, /cache\.addAll\(APP_SHELL\)/u);
-  assert.match(serviceWorker, /caches\.match\(event\.request\)/u);
-  assert.match(serviceWorker, /caches\.match\("\.\/index\.html"\)/u);
+  assert.match(serviceWorker, /cache\.match\(event\.request\)/u);
+  assert.match(serviceWorker, /cache\.match\("\.\/index\.html"\)/u);
+  assert.doesNotMatch(serviceWorker, /caches\.match\(/u);
   assert.match(serviceWorker, /"\.\/assets\/app\.js"/u);
   assert.match(serviceWorker, /"\.\/assets\/app\.css"/u);
   assert.match(serviceWorker, /event\.request\.mode === "navigate"/u);

@@ -315,3 +315,71 @@ test("crypto.randomUUIDが無くてもプレイヤーを追加できる", async 
     page.locator(".player-row").filter({ hasText: "LANテスト" }),
   ).toHaveCount(1);
 });
+
+test("不正な保存データでは戦績だけを停止してゲームを続けられる", async ({
+  page,
+}) => {
+  await openDatabase(page);
+  const [guest] = await readPlayers(page);
+  const sensitive = "SECRET-PLAYER-DATA-E20";
+  await seedDatabase(page, {
+    matches: [
+      {
+        id: "invalid-match-e20",
+        playerId: guest.id,
+        playedAt: "2026-08-03T00:00:00.000Z",
+        level: "mid",
+        won: sensitive,
+        scoreP: 11,
+        scoreA: 8,
+        maxRally: 5,
+        durationSec: 90,
+      },
+    ],
+  });
+  const warnings = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning") warnings.push(message.text());
+  });
+
+  await page.reload();
+  await expect(page.locator("#openPlayers")).toBeDisabled();
+  await expect(page.locator("#openStats")).toBeDisabled();
+  await expect(page.locator("#playerNotice")).toHaveText(
+    "保存データを読み込めません。ゲームは続けられます。",
+  );
+  expect(await countMatches(page)).toBe(1);
+  expect(warnings.join("\n")).not.toContain(sensitive);
+
+  await page.locator("#start").click();
+  await expect(page.locator("#title")).not.toHaveClass(/show/u);
+});
+
+test("IndexedDBのversionchangeで戦績を停止しアップグレードを妨げない", async ({
+  page,
+}) => {
+  await openDatabase(page);
+
+  const result = await page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        let blocked = false;
+        const request = indexedDB.open("table-tennis", 2);
+        request.onblocked = () => {
+          blocked = true;
+        };
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          request.result.close();
+          resolve({ blocked });
+        };
+      }),
+  );
+  expect(result).toEqual({ blocked: false });
+  await expect(page.locator("#playerNotice")).toHaveText(
+    "戦績データを更新するため、ページを再読み込みしてください。ゲームは続けられます。",
+  );
+
+  await page.locator("#start").click();
+  await expect(page.locator("#title")).not.toHaveClass(/show/u);
+});
