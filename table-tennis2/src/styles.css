@@ -38,6 +38,47 @@ body {
   -webkit-touch-callout: none;
 }
 
+.viewport-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: calc(20px + env(safe-area-inset-top))
+    calc(20px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom))
+    calc(20px + env(safe-area-inset-left));
+  background: radial-gradient(circle at 50% 30%, #183146, #080d12 70%);
+  text-align: center;
+}
+
+.viewport-gate[hidden] {
+  display: none;
+}
+
+.viewport-gate__card {
+  max-width: 34rem;
+}
+
+.viewport-gate__device {
+  font-size: clamp(3rem, 12vw, 6rem);
+  color: #7ee0a8;
+}
+
+.viewport-gate h1 {
+  margin: 0.4rem 0;
+  font-size: clamp(1.5rem, 6vw, 2.5rem);
+}
+
+.viewport-gate p {
+  color: #b9c7d2;
+}
+
+body[data-viewport="portrait-blocked"],
+body[data-viewport="too-small"] {
+  overflow: hidden;
+}
+
 #cv {
   position: fixed;
   inset: 0;

@@ -16,10 +16,19 @@ import type {
   StatsUnavailableReason,
 } from "./types.ts";
 import { Ui } from "./ui.ts";
+import { ViewportController } from "./view/orientation.ts";
 
 const canvas = document.getElementById("cv");
 if (!(canvas instanceof HTMLCanvasElement)) {
   throw new Error("#cv Canvasが見つかりません。");
+}
+const viewportGate = document.getElementById("viewportGate");
+const viewportGateMessage = document.getElementById("viewportGateMessage");
+if (
+  !(viewportGate instanceof HTMLElement) ||
+  !(viewportGateMessage instanceof HTMLElement)
+) {
+  throw new Error("横画面案内が見つかりません。");
 }
 
 const ui = new Ui();
@@ -30,6 +39,11 @@ const feedback = new Feedback(() => ({
 }));
 const game = new Game(ui, feedback);
 gameHolder.current = game;
+new ViewportController({
+  gate: viewportGate,
+  message: viewportGateMessage,
+  onBlockedChange: (blocked) => game.setViewportBlocked(blocked),
+});
 let store: StatsStore | null = null;
 let statsPhase: StatsPhase = "loading";
 let selectedPlayerId: string | null = null;

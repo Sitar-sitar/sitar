@@ -44,6 +44,21 @@
     data-selected-serve-length="middle"
     data-service-worker="./sw.js"
   >
+    <section
+      id="viewportGate"
+      class="viewport-gate"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="viewportGateTitle"
+      aria-describedby="viewportGateMessage"
+      hidden
+    >
+      <div class="viewport-gate__card">
+        <div class="viewport-gate__device" aria-hidden="true">↻</div>
+        <h1 id="viewportGateTitle">横画面でプレイ</h1>
+        <p id="viewportGateMessage">端末を横向きにしてください</p>
+      </div>
+    </section>
     <canvas id="cv"></canvas>
 
     <div id="board">

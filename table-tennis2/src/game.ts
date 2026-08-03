@@ -69,6 +69,7 @@ import type {
   Side,
 } from "./types.ts";
 import { Ui } from "./ui.ts";
+import { isSuspended } from "./view/suspension.ts";
 import {
   clamp,
   moveToward,
@@ -141,6 +142,11 @@ export class Game {
   private matchStartedAt = 0;
   private matchStartedAtIso = "";
   private currentPlayer: PlayerRecord | null = null;
+  private readonly suspension = {
+    userPaused: false,
+    documentHidden: document.hidden,
+    viewportBlocked: false,
+  };
 
   public constructor(
     private readonly ui: Ui,
@@ -157,6 +163,10 @@ export class Game {
 
   public setPlayer(player: PlayerRecord | null): void {
     this.currentPlayer = player;
+  }
+
+  public setViewportBlocked(blocked: boolean): void {
+    this.setSuspensionReason("viewportBlocked", blocked);
   }
 
   public bindUi(): void {
@@ -227,6 +237,9 @@ export class Game {
   }
 
   public updatePlayerTarget(clientX: number): void {
+    if (this.isSuspended()) {
+      return;
+    }
     const width = Math.max(1, this.renderer?.getViewport().width ?? 1);
     this.player.tx = clamp(
       (clientX / width - 0.5) * PLAYER_AIM_SPAN,
@@ -239,7 +252,7 @@ export class Game {
     if (
       this.state.phase !== "serve" ||
       this.state.server !== "P" ||
-      this.state.paused ||
+      this.isSuspended() ||
       this.ball.live
     ) {
       return false;
@@ -256,30 +269,15 @@ export class Game {
   }
 
   public handleVisibilityChange(): void {
-    if (
-      document.hidden &&
-      ["serve", "rally", "point"].includes(this.state.phase)
-    ) {
-      this.pause();
-    }
+    this.setSuspensionReason("documentHidden", document.hidden);
   }
 
   public handlePageShow(): void {
-    this.lastFrame = 0;
-    this.accumulator = 0;
-    if (
-      this.state.phase === "serve" &&
-      this.state.server === "A" &&
-      !this.state.paused &&
-      !this.ball.live
-    ) {
-      this.scheduleAiServe();
-    }
+    this.setSuspensionReason("documentHidden", document.hidden);
   }
 
   public handlePageHide(): void {
-    this.cancelServeTimer();
-    this.input?.reset();
+    this.setSuspensionReason("documentHidden", true);
   }
 
   private readonly loop = (timestamp: number): void => {
@@ -289,7 +287,7 @@ export class Game {
     this.lastFrame = seconds;
     const plan = planFixedSteps(this.accumulator, rawFrameDelta);
 
-    if (this.state.phase !== "title" && !this.state.paused) {
+    if (this.state.phase !== "title" && !this.isSuspended()) {
       for (let step = 0; step < plan.steps; step += 1) {
         this.tick(FIXED_STEP);
       }
@@ -347,6 +345,7 @@ export class Game {
     this.matchStartedAt = performance.now();
     this.matchStartedAtIso = new Date().toISOString();
     this.state.paused = false;
+    this.suspension.userPaused = false;
     this.lastFrame = 0;
     this.accumulator = 0;
     this.input?.reset();
@@ -377,7 +376,7 @@ export class Game {
     if (
       this.state.phase !== "serve" ||
       this.state.server !== "P" ||
-      this.state.paused
+      this.isSuspended()
     ) {
       return;
     }
@@ -390,7 +389,7 @@ export class Game {
     if (
       this.state.phase !== "serve" ||
       this.state.server !== "P" ||
-      this.state.paused
+      this.isSuspended()
     ) {
       return;
     }
@@ -408,6 +407,7 @@ export class Game {
     }
     this.cancelServeTimer();
     this.state.paused = true;
+    this.suspension.userPaused = true;
     this.input?.reset();
     this.ui.showPause(this.state);
     this.ui.updateServeControls(this.state);
@@ -419,18 +419,18 @@ export class Game {
       return;
     }
     this.state.paused = false;
+    this.suspension.userPaused = false;
     this.lastFrame = 0;
     this.accumulator = 0;
     this.ui.hidePause();
     this.ui.updateServeControls(this.state);
-    if (this.state.phase === "serve" && this.state.server === "A") {
-      this.startServe();
-    }
+    this.resumeAfterSuspension();
   }
 
   private backToTitle(): void {
     this.cancelServeTimer();
     this.state.paused = false;
+    this.suspension.userPaused = false;
     this.state.phase = "title";
     this.ball.live = false;
     this.input?.reset();
@@ -483,7 +483,7 @@ export class Game {
     this.ui.updateHud(this.state);
     this.ui.updateServeControls(this.state);
 
-    if (!playerServes) {
+    if (!playerServes && !this.isSuspended()) {
       this.scheduleAiServe();
     }
   }
@@ -497,7 +497,7 @@ export class Game {
         generation === this.serveGeneration &&
         this.state.phase === "serve" &&
         this.state.server === "A" &&
-        !this.state.paused
+        !this.isSuspended()
       ) {
         this.aiServe();
       }
@@ -516,6 +516,45 @@ export class Game {
         serveLength,
         LEVELS[this.state.level].serveErr,
       )
+    ) {
+      this.scheduleAiServe();
+    }
+  }
+
+  private isSuspended(): boolean {
+    return isSuspended(this.suspension);
+  }
+
+  private setSuspensionReason(
+    reason: "documentHidden" | "viewportBlocked",
+    active: boolean,
+  ): void {
+    if (this.suspension[reason] === active) {
+      return;
+    }
+    const wasSuspended = this.isSuspended();
+    this.suspension[reason] = active;
+    const nowSuspended = this.isSuspended();
+    if (!wasSuspended && nowSuspended) {
+      this.cancelServeTimer();
+      this.input?.reset();
+      return;
+    }
+    if (wasSuspended && !nowSuspended) {
+      this.resumeAfterSuspension();
+    }
+  }
+
+  private resumeAfterSuspension(): void {
+    if (this.isSuspended()) {
+      return;
+    }
+    this.lastFrame = 0;
+    this.accumulator = 0;
+    if (
+      this.state.phase === "serve" &&
+      this.state.server === "A" &&
+      !this.ball.live
     ) {
       this.scheduleAiServe();
     }

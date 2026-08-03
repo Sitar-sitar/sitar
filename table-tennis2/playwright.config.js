@@ -30,12 +30,14 @@ export default defineConfig({
       name: "mobile-webkit",
       use: {
         ...devices["iPhone 13"],
+        viewport: { width: 844, height: 390 },
       },
     },
     {
       name: "mobile-chromium",
       use: {
         ...devices["Pixel 7"],
+        viewport: { width: 915, height: 412 },
       },
     },
   ],

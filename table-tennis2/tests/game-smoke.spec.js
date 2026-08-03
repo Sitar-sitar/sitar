@@ -361,12 +361,19 @@ test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始ま�
     .toBe(1);
 });
 
-test("320×480でサーブ操作が画面内に収まる", async ({ page }) => {
+test("縦画面を停止し横画面へ戻すと操作できる", async ({ page }) => {
   await page.addInitScript(() => {
     Math.random = () => 0;
   });
-  await page.setViewportSize({ width: 320, height: 480 });
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await expect(page.locator("#viewportGate")).toBeVisible();
+  await expect(page.locator("#viewportGateMessage")).toHaveText(
+    "端末を横向きにしてください",
+  );
+
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.locator("#viewportGate")).toBeHidden();
   await page.locator("#start").click();
 
   const controls = page.locator("#serveControls");
@@ -374,9 +381,9 @@ test("320×480でサーブ操作が画面内に収まる", async ({ page }) => {
   const box = await controls.boundingBox();
   expect(box).not.toBeNull();
   expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(320);
+  expect(box.x + box.width).toBeLessThanOrEqual(844);
   expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.y + box.height).toBeLessThanOrEqual(480);
+  expect(box.y + box.height).toBeLessThanOrEqual(390);
 
   const typeButtons = page.locator("[data-serve-type]");
   await expect(typeButtons).toHaveCount(9);
