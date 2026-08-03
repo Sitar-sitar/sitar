@@ -5,6 +5,8 @@ on:
     branches: [master]
     paths:
       - "table-tennis/**"
+      - "table-tennis2/**"
+      - ".github/scripts/*-pages-site.mjs"
       - ".github/workflows/deploy-table-tennis-pages.yml"
   workflow_dispatch:
 
@@ -18,9 +20,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: table-tennis
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -29,19 +28,34 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: table-tennis/package-lock.json
-      - name: Install dependencies
+          cache-dependency-path: |
+            table-tennis/package-lock.json
+            table-tennis2/package-lock.json
+      - name: Install table-tennis dependencies
+        working-directory: table-tennis
         run: npm ci
       - name: Install Playwright browsers
+        working-directory: table-tennis
         run: npx playwright install --with-deps chromium webkit
-      - name: Run checks and build
+      - name: Check table-tennis
+        working-directory: table-tennis
         run: npm run check
+      - name: Install table-tennis2 dependencies
+        working-directory: table-tennis2
+        run: npm ci
+      - name: Check table-tennis2
+        working-directory: table-tennis2
+        run: npm run check
+      - name: Compose Pages site
+        run: node .github/scripts/build-pages-site.mjs
+      - name: Check Pages site
+        run: node .github/scripts/check-pages-site.mjs
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: table-tennis/dist
+          path: _site
           include-hidden-files: true
 
   deploy:

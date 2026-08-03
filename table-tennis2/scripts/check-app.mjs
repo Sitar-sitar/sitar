@@ -104,6 +104,13 @@ for (const sourcePath of [
   "src/ui.ts",
   "src/feedback.ts",
   "src/styles.css",
+  "src/view/camera.ts",
+  "src/view/input-math.ts",
+  "src/view/layout.ts",
+  "src/view/orientation.ts",
+  "src/view/suspension.ts",
+  "src/ui/feature.ts",
+  "src/ui/features/serve-panel.ts",
 ]) {
   await access(resolve(root, sourcePath));
 }

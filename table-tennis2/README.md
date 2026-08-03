@@ -65,6 +65,8 @@ npm run dev
 
 その後、`http://localhost:3039/` を開きます。同一ネットワーク内のスマートフォンからは、PCのIPアドレスを使って確認できます。
 
+横向き568×320以上が必要です。568〜759px幅ではstageとright rail、760px以上ではleft rail・stage・right railを表示します。縦画面または最小未満ではゲームを停止し、回転案内を表示します。
+
 ## 検証
 
 ```powershell
@@ -108,11 +110,11 @@ manifest、Service Worker、`.nojekyll`、iconsも `dist/` へコピーされま
 
 1. Node.js 24と依存関係を準備。
 2. PlaywrightのChromiumとWebKitを準備。
-3. `npm run check` を実行。
-4. 成功した `table-tennis/dist/` だけをPages artifactとしてアップロード。
-5. GitHub Pagesへデプロイ。
+3. `table-tennis` と `table-tennis2` の両方で `npm run check` を実行。
+4. 既存版をroot、新規版を `/table-tennis2/` に配置した `_site/` を検査。
+5. 合成した `_site/` をPages artifactとしてデプロイ。
 
-Pull Requestでは `.github/workflows/test-table-tennis.yml` が同じ全検証を行います。公開URLは次です。
+Pull Requestでは `.github/workflows/test-table-tennis2.yml` が新規版の全検証を行います。公開URLは次です。
 
 <https://sitar-sitar.github.io/sitar/table-tennis2/>
 
@@ -137,6 +139,15 @@ Pull Requestでは `.github/workflows/test-table-tennis.yml` が同じ全検証�
 │   ├── feedback.ts
 │   ├── config.ts
 │   ├── types.ts
+│   ├── view/
+│   │   ├── camera.ts
+│   │   ├── input-math.ts
+│   │   ├── layout.ts
+│   │   ├── orientation.ts
+│   │   └── suspension.ts
+│   ├── ui/
+│   │   ├── feature.ts
+│   │   └── features/serve-panel.ts
 │   └── styles.css
 ├── manifest.webmanifest
 ├── sw.js
@@ -147,7 +158,8 @@ Pull Requestでは `.github/workflows/test-table-tennis.yml` が同じ全検証�
 ├── eslint.config.js
 ├── scripts/
 │   ├── check-app.mjs
-│   └── check-dist.mjs
+│   ├── check-dist.mjs
+│   └── generate-icons.ps1
 ├── tests/
 │   ├── app-contract.test.mjs
 │   ├── game-core.test.ts

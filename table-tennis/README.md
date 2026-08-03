@@ -1,6 +1,6 @@
 # 卓球
 
-スマートフォンを主対象とし、PCブラウザでも遊べる1人用3D卓球ゲームです。PWAに対応しており、ホーム画面へ追加するとアプリのように起動できます。v0.6.0では、9種類・3段階の長さのサーブに加えて、短い球への台上技術を追加しました。v0.6.2では機能を増やさず、保存データ破損時の安全な縮退、DB更新時の接続解放、ゲームループとPWAキャッシュの安定性を強化しています。
+スマートフォンを主対象とし、PCブラウザでも遊べる1人用3D卓球ゲームです。PWAに対応しており、ホーム画面へ追加するとアプリのように起動できます。v0.6.0では、9種類・3段階の長さのサーブに加えて、短い球への台上技術を追加しました。v0.6.2では安定性を強化し、v0.6.3では新しい横画面版 `table-tennis2` のサブパスをroot Service Workerから分離しています。ゲーム仕様は変更していません。
 
 ## 遊び方
 
@@ -108,13 +108,15 @@ manifest、Service Worker、`.nojekyll`、iconsも `dist/` へコピーされま
 
 1. Node.js 24と依存関係を準備。
 2. PlaywrightのChromiumとWebKitを準備。
-3. `npm run check` を実行。
-4. 成功した `table-tennis/dist/` だけをPages artifactとしてアップロード。
-5. GitHub Pagesへデプロイ。
+3. `table-tennis` と `table-tennis2` の両方で `npm run check` を実行。
+4. 既存版をroot、新規版を `/table-tennis2/` に配置した `_site/` を検査。
+5. 合成した `_site/` をPages artifactとしてデプロイ。
 
 Pull Requestでは `.github/workflows/test-table-tennis.yml` が同じ全検証を行います。公開URLは次です。
 
 <https://sitar-sitar.github.io/sitar/>
+
+横画面版は <https://sitar-sitar.github.io/sitar/table-tennis2/> です。
 
 ## ファイル構成
 

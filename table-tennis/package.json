@@ -1,6 +1,6 @@
 {
   "name": "sitar-table-tennis",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
   "description": "ブラウザで遊べる卓球ゲームの開発・検証環境",

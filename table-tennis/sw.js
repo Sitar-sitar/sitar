@@ -1,4 +1,8 @@
-const CACHE_NAME = "table-tennis-v0.6.2";
+const CACHE_NAME = "table-tennis-v0.6.3";
+const CHILD_APP_PATH = new URL(
+  "./table-tennis2/",
+  self.registration.scope
+).pathname;
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -33,6 +37,11 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const requestUrl = new URL(event.request.url);
+  if (
+    requestUrl.origin === self.location.origin &&
+    requestUrl.pathname.startsWith(CHILD_APP_PATH)
+  ) return;
 
   event.respondWith(
     (async () => {

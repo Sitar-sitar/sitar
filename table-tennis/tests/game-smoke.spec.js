@@ -149,7 +149,7 @@ test("Service Workerは他世代キャッシュの同一URLを参照しない", 
 
   const result = await page.evaluate(async () => {
     const currentName = (await caches.keys()).find(
-      (key) => key === "table-tennis-v0.6.2",
+      (key) => key === "table-tennis-v0.6.3",
     );
     if (!currentName) throw new Error("現行キャッシュがありません。");
     const current = await caches.open(currentName);

@@ -49,3 +49,18 @@ test("Service Workerはアプリシェルをキャッシュする", async () => 
   assert.match(serviceWorker, /"\.\/assets\/app\.css"/u);
   assert.match(serviceWorker, /event\.request\.mode === "navigate"/u);
 });
+
+test("root Service Workerはtable-tennis2配下を処理しない", async () => {
+  const serviceWorker = await readFile(resolve(root, "sw.js"), "utf8");
+  const childPathIndex = serviceWorker.indexOf("CHILD_APP_PATH");
+  const bypassIndex = serviceWorker.indexOf(
+    "requestUrl.pathname.startsWith(CHILD_APP_PATH)",
+  );
+  const respondIndex = serviceWorker.indexOf("event.respondWith(");
+
+  assert.ok(childPathIndex >= 0);
+  assert.match(serviceWorker, /self\.registration\.scope/u);
+  assert.ok(bypassIndex > childPathIndex);
+  assert.ok(respondIndex > bypassIndex);
+  assert.doesNotMatch(serviceWorker, /caches\.delete\([^)]*table-tennis2/u);
+});
