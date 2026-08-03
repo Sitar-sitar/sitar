@@ -59,7 +59,15 @@
         <p id="viewportGateMessage">端末を横向きにしてください</p>
       </div>
     </section>
-    <canvas id="cv"></canvas>
+    <main id="appShell" class="app-shell">
+      <aside id="leftRail" class="app-rail app-rail--left" aria-label="試合情報">
+        <div class="rail-brand">TABLE TENNIS 2</div>
+        <p>横画面モード</p>
+        <div id="hudSecondary" class="feature-slot" data-feature-slot="hud-secondary"></div>
+      </aside>
+
+      <section id="stage" class="stage" aria-label="卓球台">
+        <canvas id="cv"></canvas>
 
     <div id="board">
       <div class="cell">
@@ -83,14 +91,16 @@
 
     <button id="gear" type="button" aria-label="設定を開く">⚙</button>
     <div id="flash" aria-live="polite"></div>
-    <div id="hint" aria-live="polite"></div>
+        <div id="hint" aria-live="polite"></div>
+      </section>
 
-    <section
-      id="serveControls"
-      class="serve-controls"
-      aria-label="サーブの種類と長さ"
-      hidden
-    >
+      <aside id="rightRail" class="app-rail app-rail--right" aria-label="操作パネル">
+        <section
+          id="serveControls"
+          class="serve-controls"
+          aria-label="サーブの種類と長さ"
+          hidden
+        >
       <div class="serve-controls__label">サーブを選ぶ</div>
       <div class="serve-controls__grid">
         <button
@@ -192,9 +202,12 @@
           長い
         </button>
       </div>
-    </section>
+        </section>
+      </aside>
+    </main>
 
-    <div class="ov show" id="title">
+    <div id="overlaySlot" data-feature-slot="overlay">
+      <div class="ov show" id="title">
       <div class="eyebrow">TABLE TENNIS</div>
       <h1>卓球 横</h1>
       <div class="sub">体育館の一台。11点先取、2点差で勝ち。</div>
@@ -316,7 +329,7 @@
       </div>
     </div>
 
-    <div class="ov" id="pause">
+      <div class="ov" id="pause">
       <h2>一時停止</h2>
       <div class="sub" id="pScore"></div>
       <button class="btn" type="button" id="resume">つづける</button>
@@ -324,6 +337,7 @@
         <button class="tg" type="button" id="tgS2">🔈 音</button>
         <button class="tg" type="button" id="tgV2">📳 振動</button>
         <button class="btn ghost" type="button" id="quit">やめる</button>
+      </div>
       </div>
     </div>
 

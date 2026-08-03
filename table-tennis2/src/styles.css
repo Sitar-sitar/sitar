@@ -79,6 +79,89 @@ body[data-viewport="too-small"] {
   overflow: hidden;
 }
 
+.app-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(176px, 26vw, 240px);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: #080d12;
+}
+
+.stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-rail {
+  z-index: 6;
+  min-width: 0;
+  overflow: auto;
+  background: linear-gradient(180deg, #111922, #0a1016);
+}
+
+.app-rail--left {
+  display: none;
+  padding: 18px 14px;
+  border-right: 1px solid #26313c;
+  color: #93a3b0;
+}
+
+.app-rail--right {
+  padding: 8px;
+  border-left: 1px solid #26313c;
+}
+
+.rail-brand {
+  margin-bottom: 8px;
+  color: #7ee0a8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.feature-slot:empty {
+  display: none;
+}
+
+@media (min-width: 760px) and (orientation: landscape) {
+  .app-shell {
+    grid-template-columns: 156px minmax(0, 1fr) clamp(196px, 24vw, 260px);
+  }
+
+  .app-rail--left {
+    display: block;
+  }
+}
+
+.stage #cv,
+.stage #board,
+.stage #gear,
+.stage #flash,
+.stage #hint {
+  position: absolute;
+}
+
+.app-rail--right .serve-controls {
+  position: static;
+  width: 100%;
+  transform: none;
+  padding: 6px;
+}
+
+.app-rail--right .serve-controls__label {
+  margin-bottom: 4px;
+}
+
+.stage #hint,
+body:not([data-phase="serve"]) .stage #hint,
+body[data-server="A"] .stage #hint {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+
 #cv {
   position: fixed;
   inset: 0;

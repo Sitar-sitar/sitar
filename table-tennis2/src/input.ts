@@ -1,8 +1,8 @@
-import type { Flick, Viewport } from "./types.ts";
+import type { Flick } from "./types.ts";
+import { normalizeStageX } from "./view/input-math.ts";
 
 interface InputCallbacks {
-  getViewport: () => Viewport;
-  onPosition: (clientX: number) => void;
+  onPosition: (stageX: number) => void;
   onServe: (flick: Flick | null) => boolean;
   onUserGesture: () => void;
 }
@@ -44,6 +44,15 @@ export class InputController {
   }
 
   public reset(): void {
+    if (this.activePointerId !== null) {
+      try {
+        if (this.canvas.hasPointerCapture(this.activePointerId)) {
+          this.canvas.releasePointerCapture(this.activePointerId);
+        }
+      } catch {
+        // Rotation or pagehide may have released capture already.
+      }
+    }
     this.activePointerId = null;
     this.down = false;
     this.flick = null;
@@ -63,6 +72,15 @@ export class InputController {
     if (!event.isPrimary || this.activePointerId !== null) {
       return;
     }
+    const rect = this.canvas.getBoundingClientRect();
+    if (
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom
+    ) {
+      return;
+    }
     event.preventDefault();
     this.callbacks.onUserGesture();
     this.activePointerId = event.pointerId;
@@ -72,7 +90,7 @@ export class InputController {
     this.samples.length = 0;
     this.servedDuringGesture = false;
     this.pushSample(event.clientX, event.clientY);
-    this.callbacks.onPosition(event.clientX);
+    this.callbacks.onPosition(this.stageX(event.clientX, rect));
     try {
       this.canvas.setPointerCapture(event.pointerId);
     } catch {
@@ -90,7 +108,7 @@ export class InputController {
     }
     event.preventDefault();
     this.pushSample(event.clientX, event.clientY);
-    this.callbacks.onPosition(event.clientX);
+    this.callbacks.onPosition(this.stageX(event.clientX));
 
     const current = this.currentFlick();
     if (
@@ -160,7 +178,7 @@ export class InputController {
     }
 
     const elapsed = last.t - first.t;
-    const height = Math.max(1, this.callbacks.getViewport().height);
+    const height = Math.max(1, this.canvas.getBoundingClientRect().height);
     if (elapsed <= 0.008) {
       return;
     }
@@ -175,5 +193,12 @@ export class InputController {
 
   private now(): number {
     return performance.now() / 1000;
+  }
+
+  private stageX(
+    clientX: number,
+    rect = this.canvas.getBoundingClientRect(),
+  ): number {
+    return normalizeStageX(clientX, rect.left, rect.width);
   }
 }

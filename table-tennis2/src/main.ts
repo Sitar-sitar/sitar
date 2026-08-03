@@ -51,9 +51,8 @@ let selectedPlayer: PlayerRecord | null = null;
 
 const renderer = new Renderer(canvas, () => game.getRenderScene());
 const input = new InputController(canvas, {
-  getViewport: () => renderer.getViewport(),
-  onPosition: (clientX) => {
-    game.updatePlayerTarget(clientX);
+  onPosition: (stageX) => {
+    game.updatePlayerTarget(stageX);
   },
   onServe: (flick) => game.tryPlayerServe(flick),
   onUserGesture: () => {

@@ -236,13 +236,12 @@ export class Game {
     };
   }
 
-  public updatePlayerTarget(clientX: number): void {
+  public updatePlayerTarget(stageX: number): void {
     if (this.isSuspended()) {
       return;
     }
-    const width = Math.max(1, this.renderer?.getViewport().width ?? 1);
     this.player.tx = clamp(
-      (clientX / width - 0.5) * PLAYER_AIM_SPAN,
+      (stageX - 0.5) * PLAYER_AIM_SPAN,
       -PADDLE_LIMIT,
       PADDLE_LIMIT,
     );

@@ -21,6 +21,7 @@ import {
   paddleShadowY,
   projectScale,
 } from "./utils.ts";
+import { computeCamera } from "./view/camera.ts";
 
 interface ProjectedPoint {
   x: number;
@@ -101,13 +102,7 @@ export class Renderer {
       this.canvas.height = nextHeight;
     }
     this.context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.camera.f = Math.max(
-      300,
-      Math.min(1.3 * this.width, 0.8 * this.height),
-    );
-    this.camera.cx = this.width / 2;
-    const near = this.camera.f / (-HL - this.camera.z);
-    this.camera.cy = this.height * 0.735 - this.camera.y * near;
+    Object.assign(this.camera, computeCamera(this.width, this.height));
   };
 
   private readonly onOrientationChange = (): void => {

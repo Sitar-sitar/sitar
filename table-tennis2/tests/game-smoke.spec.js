@@ -372,7 +372,7 @@ test("縦画面を停止し横画面へ戻すと操作できる", async ({ page 
     "端末を横向きにしてください",
   );
 
-  await page.setViewportSize({ width: 844, height: 390 });
+  await page.setViewportSize({ width: 568, height: 320 });
   await expect(page.locator("#viewportGate")).toBeHidden();
   await page.locator("#start").click();
 
@@ -381,9 +381,9 @@ test("縦画面を停止し横画面へ戻すと操作できる", async ({ page 
   const box = await controls.boundingBox();
   expect(box).not.toBeNull();
   expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(844);
+  expect(box.x + box.width).toBeLessThanOrEqual(568);
   expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.y + box.height).toBeLessThanOrEqual(390);
+  expect(box.y + box.height).toBeLessThanOrEqual(320);
 
   const typeButtons = page.locator("[data-serve-type]");
   await expect(typeButtons).toHaveCount(9);
@@ -391,8 +391,14 @@ test("縦画面を停止し横画面へ戻すと操作できる", async ({ page 
   await expect(lengthButtons).toHaveCount(3);
   for (const button of await typeButtons.all()) {
     await expect(button).toBeVisible();
+    const buttonBox = await button.boundingBox();
+    expect(buttonBox.width).toBeGreaterThanOrEqual(44);
+    expect(buttonBox.height).toBeGreaterThanOrEqual(44);
   }
   for (const button of await lengthButtons.all()) {
     await expect(button).toBeVisible();
+    const buttonBox = await button.boundingBox();
+    expect(buttonBox.width).toBeGreaterThanOrEqual(44);
+    expect(buttonBox.height).toBeGreaterThanOrEqual(44);
   }
 });

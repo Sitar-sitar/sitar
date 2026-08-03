@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "check:app": "node scripts/check-app.mjs",
     "check:dist": "node scripts/check-dist.mjs",
-    "test:unit": "node --test tests/app-contract.test.mjs tests/game-core.test.ts tests/layout.test.ts tests/opponent-ai.test.ts tests/storage-schema.test.ts tests/stats.test.ts tests/suspension.test.ts tests/timing.test.ts",
+    "test:unit": "node --test tests/app-contract.test.mjs tests/camera.test.ts tests/game-core.test.ts tests/input-math.test.ts tests/layout.test.ts tests/opponent-ai.test.ts tests/storage-schema.test.ts tests/stats.test.ts tests/suspension.test.ts tests/timing.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:stability": "playwright test --workers=1 --retries=0 --repeat-each=3",
     "test": "npm run test:unit && npm run test:e2e",
