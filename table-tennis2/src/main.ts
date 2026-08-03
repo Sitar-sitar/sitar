@@ -16,6 +16,8 @@ import type {
   StatsUnavailableReason,
 } from "./types.ts";
 import { Ui } from "./ui.ts";
+import { mountFeatures, type FeatureSlot } from "./ui/feature.ts";
+import { servePanelFeature } from "./ui/features/serve-panel.ts";
 import { ViewportController } from "./view/orientation.ts";
 
 const canvas = document.getElementById("cv");
@@ -39,6 +41,29 @@ const feedback = new Feedback(() => ({
 }));
 const game = new Game(ui, feedback);
 gameHolder.current = game;
+const featureHosts = {
+  "left-rail": document.getElementById("leftRail"),
+  "right-rail": document.getElementById("rightRail"),
+  "hud-secondary": document.getElementById("hudSecondary"),
+  overlay: document.getElementById("overlaySlot"),
+} satisfies Record<FeatureSlot, HTMLElement | null>;
+for (const [slot, host] of Object.entries(featureHosts)) {
+  if (!(host instanceof HTMLElement)) {
+    throw new Error(`Feature slotが見つかりません: ${slot}`);
+  }
+}
+mountFeatures(
+  [servePanelFeature],
+  featureHosts as Record<FeatureSlot, HTMLElement>,
+  {
+    getGameSnapshot: () => game.state,
+    subscribe: (listener) => game.subscribe(listener),
+    commands: {
+      selectServe: (type) => game.selectServe(type),
+      selectServeLength: (length) => game.selectServeLength(length),
+    },
+  },
+);
 new ViewportController({
   gate: viewportGate,
   message: viewportGateMessage,

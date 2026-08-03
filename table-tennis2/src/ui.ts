@@ -1,7 +1,5 @@
 import {
   LEVELS,
-  SERVE_LENGTHS,
-  SERVE_TYPES,
 } from "./config.ts";
 import {
   formatRecordLabel,
@@ -14,8 +12,6 @@ import type {
   PlayerRecord,
   PlayerStats,
   ResultRecord,
-  ServeLength,
-  ServeType,
   StatsPhase,
   StatsUnavailableReason,
 } from "./types.ts";
@@ -28,8 +24,6 @@ interface UiHandlers {
   resume: () => void;
   quit: () => void;
   selectLevel: (level: LevelId) => void;
-  selectServe: (serveType: ServeType) => void;
-  selectServeLength: (serveLength: ServeLength) => void;
   toggleSound: () => void;
   toggleVibration: () => void;
 }
@@ -212,34 +206,6 @@ export class Ui {
         });
       },
     );
-
-    document
-      .querySelectorAll<HTMLButtonElement>("[data-serve-type]")
-      .forEach((button) => {
-        button.addEventListener("click", () => {
-          const serveType = button.dataset.serveType;
-          if (
-            serveType &&
-            SERVE_TYPES.includes(serveType as ServeType)
-          ) {
-            handlers.selectServe(serveType as ServeType);
-          }
-        });
-      });
-
-    document
-      .querySelectorAll<HTMLButtonElement>("[data-serve-length]")
-      .forEach((button) => {
-        button.addEventListener("click", () => {
-          const serveLength = button.dataset.serveLength;
-          if (
-            serveLength &&
-            SERVE_LENGTHS.includes(serveLength as ServeLength)
-          ) {
-            handlers.selectServeLength(serveLength as ServeLength);
-          }
-        });
-      });
 
     for (const id of ["tgS", "tgS2"]) {
       requiredElement(id, HTMLButtonElement).addEventListener(

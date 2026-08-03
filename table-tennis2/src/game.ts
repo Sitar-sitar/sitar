@@ -142,6 +142,9 @@ export class Game {
   private matchStartedAt = 0;
   private matchStartedAtIso = "";
   private currentPlayer: PlayerRecord | null = null;
+  private readonly stateListeners = new Set<
+    (state: Readonly<GameState>) => void
+  >();
   private readonly suspension = {
     userPaused: false,
     documentHidden: document.hidden,
@@ -169,6 +172,14 @@ export class Game {
     this.setSuspensionReason("viewportBlocked", blocked);
   }
 
+  public subscribe(
+    listener: (state: Readonly<GameState>) => void,
+  ): () => void {
+    this.stateListeners.add(listener);
+    listener(this.state);
+    return () => this.stateListeners.delete(listener);
+  }
+
   public bindUi(): void {
     this.ui.bind({
       start: () => {
@@ -193,12 +204,6 @@ export class Game {
       },
       selectLevel: (level) => {
         this.selectLevel(level);
-      },
-      selectServe: (serveType) => {
-        this.selectServe(serveType);
-      },
-      selectServeLength: (serveLength) => {
-        this.selectServeLength(serveLength);
       },
       toggleSound: () => {
         this.state.sound = !this.state.sound;
@@ -371,7 +376,7 @@ export class Game {
     this.ui.updateHud(this.state);
   }
 
-  private selectServe(serveType: ServeType): void {
+  public selectServe(serveType: ServeType): void {
     if (
       this.state.phase !== "serve" ||
       this.state.server !== "P" ||
@@ -382,9 +387,10 @@ export class Game {
     this.state.selectedServeType = serveType;
     this.ui.updateServeControls(this.state);
     this.ui.updateHud(this.state);
+    this.notifyStateListeners();
   }
 
-  private selectServeLength(serveLength: ServeLength): void {
+  public selectServeLength(serveLength: ServeLength): void {
     if (
       this.state.phase !== "serve" ||
       this.state.server !== "P" ||
@@ -395,6 +401,7 @@ export class Game {
     this.state.selectedServeLength = serveLength;
     this.ui.updateServeControls(this.state);
     this.ui.updateHud(this.state);
+    this.notifyStateListeners();
   }
 
   private pause(): void {
@@ -522,6 +529,10 @@ export class Game {
 
   private isSuspended(): boolean {
     return isSuspended(this.suspension);
+  }
+
+  private notifyStateListeners(): void {
+    this.stateListeners.forEach((listener) => listener(this.state));
   }
 
   private setSuspensionReason(
