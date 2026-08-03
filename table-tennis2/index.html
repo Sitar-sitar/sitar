@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content"
+    >
+    <meta name="theme-color" content="#0d1218">
+    <meta
+      name="description"
+      content="スマートフォン横画面で遊べる、軽快な3D卓球ゲーム"
+    >
+    <meta name="application-name" content="卓球 横画面">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    >
+    <meta name="apple-mobile-web-app-title" content="卓球 横">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="color-scheme" content="dark">
+    <link rel="manifest" href="./manifest.webmanifest" vite-ignore>
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="192x192"
+      href="./icons/icon-192.png"
+      vite-ignore
+    >
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="./icons/apple-touch-icon.png"
+      vite-ignore
+    >
+    <title>卓球 横画面</title>
+  </head>
+  <body
+    data-phase="title"
+    data-server="P"
+    data-selected-serve-type="topspin"
+    data-selected-serve-length="middle"
+    data-service-worker="./sw.js"
+  >
+    <canvas id="cv"></canvas>
+
+    <div id="board">
+      <div class="cell">
+        <div class="lbl">
+          あいて<span id="sA" class="serve"></span>
+        </div>
+        <div class="num" id="scA">0</div>
+      </div>
+      <div class="cell mid">
+        <div class="lv" id="lvName">中級</div>
+        <div class="rally" id="rally">RALLY 0</div>
+      </div>
+      <div class="cell">
+        <div class="lbl">
+          <span id="sP" class="serve"></span
+          ><span id="hudPlayerName">あなた</span>
+        </div>
+        <div class="num" id="scP">0</div>
+      </div>
+    </div>
+
+    <button id="gear" type="button" aria-label="設定を開く">⚙</button>
+    <div id="flash" aria-live="polite"></div>
+    <div id="hint" aria-live="polite"></div>
+
+    <section
+      id="serveControls"
+      class="serve-controls"
+      aria-label="サーブの種類と長さ"
+      hidden
+    >
+      <div class="serve-controls__label">サーブを選ぶ</div>
+      <div class="serve-controls__grid">
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="topspin-left"
+          aria-pressed="false"
+        >
+          横上左
+        </button>
+        <button
+          class="serve-choice sel"
+          type="button"
+          data-serve-type="topspin"
+          aria-pressed="true"
+        >
+          上回転
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="topspin-right"
+          aria-pressed="false"
+        >
+          横上右
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="side-left"
+          aria-pressed="false"
+        >
+          横左
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="knuckle"
+          aria-pressed="false"
+        >
+          ナックル
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="side-right"
+          aria-pressed="false"
+        >
+          横右
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="backspin-left"
+          aria-pressed="false"
+        >
+          横下左
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="backspin"
+          aria-pressed="false"
+        >
+          下回転
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-type="backspin-right"
+          aria-pressed="false"
+        >
+          横下右
+        </button>
+      </div>
+      <div class="serve-controls__lengths" aria-label="サーブの長さ">
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-length="short"
+          aria-pressed="false"
+        >
+          短い
+        </button>
+        <button
+          class="serve-choice sel"
+          type="button"
+          data-serve-length="middle"
+          aria-pressed="true"
+        >
+          中
+        </button>
+        <button
+          class="serve-choice"
+          type="button"
+          data-serve-length="long"
+          aria-pressed="false"
+        >
+          長い
+        </button>
+      </div>
+    </section>
+
+    <div class="ov show" id="title">
+      <div class="eyebrow">TABLE TENNIS</div>
+      <h1>卓球 横</h1>
+      <div class="sub">体育館の一台。11点先取、2点差で勝ち。</div>
+      <div id="playerBar" class="player-bar">
+        <div class="player-bar__summary">
+          <span id="playerName">あなた</span>
+          <span id="playerRecord"></span>
+        </div>
+        <div id="playerNotice" class="player-notice" aria-live="polite">
+          戦績を準備しています…
+        </div>
+        <div class="player-bar__actions">
+          <button
+            id="openPlayers"
+            class="tg"
+            type="button"
+            disabled
+          >
+            プレイヤー
+          </button>
+          <button id="openStats" class="tg" type="button" disabled>
+            戦績
+          </button>
+        </div>
+      </div>
+      <div class="seclbl">あいての強さ</div>
+      <div class="lvs" id="lvs">
+        <button class="lv" type="button" data-lv="easy">
+          <b>初級</b><small>ラリーを楽しむ</small>
+        </button>
+        <button class="lv sel" type="button" data-lv="mid">
+          <b>中級</b><small>打ち返してくる</small>
+        </button>
+        <button class="lv" type="button" data-lv="hard">
+          <b>上級</b><small>逆を突かれる</small>
+        </button>
+      </div>
+      <button class="btn" type="button" id="start">はじめる</button>
+      <div class="guide">
+        <div>
+          <span class="k">サーブ時</span>種類を選び、タップ／フリック
+        </div>
+        <div><span class="k">よこにドラッグ</span>ラケットを動かす</div>
+        <div>
+          <span class="k">上にフリック</span>ドライブ／<b>スマッシュ</b>
+        </div>
+        <div>
+          <span class="k">下にフリック</span>ツッツキ（下回転）
+        </div>
+        <div>
+          <span class="k">短い球</span>下フリックでストップ、上フリックでフリック
+        </div>
+        <div><span class="k">指を置くだけ</span>押し出し（ブロック）</div>
+        <div
+          style="
+            margin-top: 8px;
+            color: #7d8b98;
+            font-size: 11.5px;
+            line-height: 1.9;
+          "
+        >
+          浮いた球だけスマッシュが入ります。低い球を無理に叩くとネットにかかります。
+        </div>
+      </div>
+      <div class="toggles">
+        <button class="tg on" type="button" id="tgS">🔈 音</button>
+        <button class="tg on" type="button" id="tgV">📳 振動</button>
+      </div>
+    </div>
+
+    <div class="ov" id="players">
+      <div class="eyebrow">PLAYER</div>
+      <h2>プレイヤー</h2>
+      <div id="playerList" class="player-list"></div>
+      <div class="player-add">
+        <input
+          id="playerInput"
+          type="text"
+          aria-label="新しいプレイヤー名"
+          autocomplete="off"
+          placeholder="名前（1〜12文字）"
+        >
+        <button id="playerAdd" class="btn player-add__button" type="button">
+          追加
+        </button>
+      </div>
+      <div id="playerError" class="player-error" aria-live="polite"></div>
+      <button class="btn ghost" type="button" id="playersClose">
+        閉じる
+      </button>
+    </div>
+
+    <div class="ov" id="stats">
+      <div class="eyebrow">RECORD</div>
+      <h2 id="statsPlayerName">戦績</h2>
+      <div class="stats-panel">
+        <div id="statsSummary" class="stats-summary"></div>
+        <h3>難易度別</h3>
+        <div id="statsByLevel" class="stats-by-level"></div>
+        <h3>直近10試合</h3>
+        <div id="statsRecent" class="stats-recent"></div>
+      </div>
+      <button class="btn ghost" type="button" id="statsClose">
+        閉じる
+      </button>
+    </div>
+
+    <div class="ov" id="result">
+      <div class="eyebrow" id="rEye">GAME</div>
+      <h2 id="rTitle">勝ち</h2>
+      <div class="final" id="rScore">11 - 8</div>
+      <div class="sub" id="rSub"></div>
+      <div id="rRecord" class="result-record" aria-live="polite"></div>
+      <button class="btn" type="button" id="again">もう一度</button>
+      <div class="row">
+        <button class="btn ghost" type="button" id="back">
+          難易度を変える
+        </button>
+      </div>
+    </div>
+
+    <div class="ov" id="pause">
+      <h2>一時停止</h2>
+      <div class="sub" id="pScore"></div>
+      <button class="btn" type="button" id="resume">つづける</button>
+      <div class="row">
+        <button class="tg" type="button" id="tgS2">🔈 音</button>
+        <button class="tg" type="button" id="tgV2">📳 振動</button>
+        <button class="btn ghost" type="button" id="quit">やめる</button>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

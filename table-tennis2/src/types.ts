@@ -1,0 +1,254 @@
+export type Side = "P" | "A";
+export type GamePhase = "title" | "serve" | "rally" | "point" | "over";
+export type LevelId = "easy" | "mid" | "hard";
+export type ShotId =
+  | "DRIVE"
+  | "SMASH"
+  | "PUSH"
+  | "CHOP"
+  | "LOB"
+  | "STOP"
+  | "FLICK";
+export type ServeType =
+  | "topspin"
+  | "backspin"
+  | "side-left"
+  | "side-right"
+  | "knuckle"
+  | "topspin-left"
+  | "topspin-right"
+  | "backspin-left"
+  | "backspin-right";
+export type ServeLength = "short" | "middle" | "long";
+
+export interface LevelConfig {
+  name: string;
+  delay: number;
+  speed: number;
+  perr: number;
+  refine: number;
+  smash: number;
+  chop: number;
+  miss: number;
+  spread: number;
+  reach: number;
+  depth: number;
+  serveErr: number;
+  lob: number;
+}
+
+export type ShotSpeed =
+  /** 絶対速度を抽選する。乱数1回。 */
+  | { readonly model: "absolute"; readonly sp: readonly [number, number] }
+  /** 目標へ届く必要速度をそのまま使う（高い弧）。乱数0回。 */
+  | { readonly model: "arc"; readonly elev: number }
+  /** 必要速度に余裕率を掛ける（台上技術）。乱数1回。 */
+  | {
+      readonly model: "touch";
+      readonly elev: number;
+      readonly margin: readonly [number, number];
+    };
+
+export interface ShotConfig {
+  speed: ShotSpeed;
+  spin: number;
+  dep: number;
+  err: number;
+  lab: string;
+}
+
+export interface ServeProfile {
+  id: ServeType;
+  label: string;
+  spin: number;
+  screenCurve: number;
+}
+
+export interface ServeLengthProfile {
+  id: ServeLength;
+  label: string;
+  targetZ: number;
+  distances: readonly number[];
+  speedBase: number;
+  speedStep: number;
+  aimScale: number;
+}
+
+export interface ResolvedServe {
+  solution: ServeSolution;
+  serveType: ServeType;
+  serveLength: ServeLength;
+  aimX: number;
+  spin: number;
+  side: number;
+}
+
+export interface BallVector {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  spin: number;
+  side: number;
+}
+
+export interface BallState extends BallVector {
+  live: boolean;
+  hitter: Side;
+  bounces: number;
+  serveStage: number;
+  lastBounceZ: number | null;
+}
+
+export interface PaddleState {
+  x: number;
+  tx: number;
+  z: number;
+  /** 描画専用の奥行き追従値。打球判定には使わない（判定は常に z）。 */
+  viewZ: number;
+  swing: number;
+  swingType: number;
+}
+
+export interface AiState extends PaddleState {
+  react: number;
+  nextRefine: number;
+  plan: { x: number; y: number } | null;
+}
+
+export interface GameState {
+  phase: GamePhase;
+  paused: boolean;
+  level: LevelId;
+  levelConfig: LevelConfig;
+  scP: number;
+  scA: number;
+  server: Side;
+  servedCount: number;
+  rally: number;
+  maxRally: number;
+  pointTimer: number;
+  sound: boolean;
+  vibe: boolean;
+  played: number;
+  selectedServeType: ServeType;
+  selectedServeLength: ServeLength;
+}
+
+export interface Flick {
+  vx: number;
+  vy: number;
+  sp: number;
+  t: number;
+}
+
+export interface LandingResult {
+  net: boolean;
+  x: number;
+  z: number;
+  t: number;
+  timeout?: boolean;
+}
+
+export interface ServeSolution {
+  elev: number;
+  azim: number;
+  speed: number;
+  z2: number;
+  ok: boolean;
+}
+
+export interface Mark {
+  x: number;
+  z: number;
+  t: number;
+}
+
+export interface RenderScene {
+  game: GameState;
+  ball: BallState;
+  player: PaddleState;
+  opponent: AiState;
+  trail: readonly Pick<BallVector, "x" | "y" | "z">[];
+  mark: Mark | null;
+  smashable: boolean;
+}
+
+export interface Viewport {
+  width: number;
+  height: number;
+}
+
+export interface PlayerRecord {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface MatchRecord {
+  id: string;
+  playerId: string;
+  playedAt: string;
+  level: LevelId;
+  won: boolean;
+  scoreP: number;
+  scoreA: number;
+  maxRally: number;
+  durationSec: number;
+}
+
+export interface MatchResult {
+  matchSeq: number;
+  playerId: string | null;
+  playerName: string | null;
+  level: LevelId;
+  won: boolean;
+  scoreP: number;
+  scoreA: number;
+  maxRally: number;
+  startedAt: string;
+  playedAt: string;
+  durationSec: number;
+}
+
+export type RecordStatus =
+  | "unavailable"
+  | "pending"
+  | "saved"
+  | "failed";
+
+export interface ResultRecord {
+  matchSeq: number;
+  status: RecordStatus;
+  label: string;
+}
+
+export interface PlayerSelection {
+  players: PlayerRecord[];
+  selectedPlayerId: string | null;
+}
+
+export interface LevelSummary {
+  matches: number;
+  wins: number;
+}
+
+export interface PlayerStats {
+  matches: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  maxRally: number;
+  byLevel: Record<LevelId, LevelSummary>;
+  recent: MatchRecord[];
+}
+
+export type StatsPhase = "loading" | "ready" | "unavailable";
+
+export type StatsUnavailableReason =
+  | "unsupported"
+  | "open-failed"
+  | "invalid-data"
+  | "version-change";
