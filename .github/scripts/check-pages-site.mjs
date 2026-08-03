@@ -37,12 +37,20 @@ const childWorker = await readFile(
   resolve(siteRoot, "table-tennis2", "sw.js"),
   "utf8",
 );
+const rootPackage = JSON.parse(
+  await readFile(resolve(repositoryRoot, "table-tennis", "package.json"), "utf8"),
+);
+const childPackage = JSON.parse(
+  await readFile(resolve(repositoryRoot, "table-tennis2", "package.json"), "utf8"),
+);
+const rootCacheName = `table-tennis-v${rootPackage.version}`;
+const childCacheName = `table-tennis2-v${childPackage.version}`;
 
 assert.match(rootHtml, /<title>卓球<\/title>/u);
 assert.match(childHtml, /<title>卓球 横画面<\/title>/u);
 assert.match(rootWorker, /CHILD_APP_PATH/u);
-assert.match(rootWorker, /table-tennis-v0\.6\.3/u);
-assert.match(childWorker, /table-tennis2-v0\.1\.0/u);
-assert.doesNotMatch(childWorker, /table-tennis-v0\.6\.3/u);
+assert.ok(rootWorker.includes(rootCacheName), `root cache missing: ${rootCacheName}`);
+assert.ok(childWorker.includes(childCacheName), `child cache missing: ${childCacheName}`);
+assert.ok(!childWorker.includes(rootCacheName), `child cache leaked root identity: ${rootCacheName}`);
 
 console.log("Pages site check: OK (root and /table-tennis2/)");
