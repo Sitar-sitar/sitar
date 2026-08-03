@@ -17,6 +17,7 @@ import type {
 } from "./types.ts";
 import { Ui } from "./ui.ts";
 import { mountFeatures, type FeatureSlot } from "./ui/feature.ts";
+import { matchContextFeature } from "./ui/features/match-context.ts";
 import { servePanelFeature } from "./ui/features/serve-panel.ts";
 import { ViewportController } from "./view/orientation.ts";
 
@@ -53,7 +54,7 @@ for (const [slot, host] of Object.entries(featureHosts)) {
   }
 }
 mountFeatures(
-  [servePanelFeature],
+  [servePanelFeature, matchContextFeature],
   featureHosts as Record<FeatureSlot, HTMLElement>,
   {
     getGameSnapshot: () => game.state,

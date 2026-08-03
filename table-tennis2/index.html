@@ -63,38 +63,65 @@
       <aside id="leftRail" class="app-rail app-rail--left" aria-label="試合情報">
         <div class="rail-brand">TABLE TENNIS 2</div>
         <p>横画面モード</p>
-        <div id="hudSecondary" class="feature-slot" data-feature-slot="hud-secondary"></div>
+        <div id="hudSecondary" class="feature-slot" data-feature-slot="hud-secondary">
+          <section class="match-context" aria-label="現在のサーバー">
+            <span class="match-context__label">サーブ</span>
+            <strong class="match-context__value" data-match-server>あなた</strong>
+          </section>
+        </div>
       </aside>
 
       <section id="stage" class="stage" aria-label="卓球台">
         <canvas id="cv"></canvas>
 
-    <div id="board">
-      <div class="cell">
+    <section id="board" class="match-hud" aria-label="試合スコア">
+      <div id="opponentScoreCard" class="score-badge score-badge--opponent">
         <div class="lbl">
           あいて<span id="sA" class="serve"></span>
         </div>
         <div class="num" id="scA">0</div>
       </div>
-      <div class="cell mid">
-        <div class="lv" id="lvName">中級</div>
-        <div class="rally" id="rally">RALLY 0</div>
+      <div id="matchMeta" class="match-meta">
+        <div id="lvName">中級</div>
+        <span aria-hidden="true">・</span>
+        <div id="rally">RALLY 0</div>
       </div>
-      <div class="cell">
+      <div id="playerScoreCard" class="score-badge score-badge--player">
         <div class="lbl">
           <span id="sP" class="serve"></span
           ><span id="hudPlayerName">あなた</span>
         </div>
         <div class="num" id="scP">0</div>
       </div>
-    </div>
+    </section>
 
-    <button id="gear" type="button" aria-label="設定を開く">⚙</button>
     <div id="flash" aria-live="polite"></div>
         <div id="hint" aria-live="polite"></div>
       </section>
 
       <aside id="rightRail" class="app-rail app-rail--right" aria-label="操作パネル">
+        <section id="railMatchTools" class="rail-match-tools" aria-label="試合操作">
+          <button id="gear" class="rail-action" type="button">
+            設定
+          </button>
+          <button
+            id="tgSHud"
+            class="rail-action rail-action--secondary on"
+            type="button"
+            aria-pressed="true"
+          >
+            音
+          </button>
+          <button
+            id="tgVHud"
+            class="rail-action rail-action--secondary on"
+            type="button"
+            aria-pressed="true"
+          >
+            振動
+          </button>
+          <div id="playStatus" class="play-status">サーブを選ぶ</div>
+        </section>
         <section
           id="serveControls"
           class="serve-controls"
@@ -273,8 +300,8 @@
         </div>
       </div>
       <div class="toggles">
-        <button class="tg on" type="button" id="tgS">🔈 音</button>
-        <button class="tg on" type="button" id="tgV">📳 振動</button>
+        <button class="tg on" type="button" id="tgS" aria-pressed="true">🔈 音</button>
+        <button class="tg on" type="button" id="tgV" aria-pressed="true">📳 振動</button>
       </div>
     </div>
 
@@ -334,8 +361,8 @@
       <div class="sub" id="pScore"></div>
       <button class="btn" type="button" id="resume">つづける</button>
       <div class="row">
-        <button class="tg" type="button" id="tgS2">🔈 音</button>
-        <button class="tg" type="button" id="tgV2">📳 振動</button>
+        <button class="tg" type="button" id="tgS2" aria-pressed="true">🔈 音</button>
+        <button class="tg" type="button" id="tgV2" aria-pressed="true">📳 振動</button>
         <button class="btn ghost" type="button" id="quit">やめる</button>
       </div>
       </div>

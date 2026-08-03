@@ -80,6 +80,10 @@ export class Ui {
     HTMLDivElement,
   );
   private readonly rally = requiredElement("rally", HTMLDivElement);
+  private readonly playStatus = requiredElement(
+    "playStatus",
+    HTMLDivElement,
+  );
   private readonly serveP = requiredElement("sP", HTMLSpanElement);
   private readonly serveA = requiredElement("sA", HTMLSpanElement);
   private readonly pauseScore = requiredElement(
@@ -207,13 +211,13 @@ export class Ui {
       },
     );
 
-    for (const id of ["tgS", "tgS2"]) {
+    for (const id of ["tgS", "tgS2", "tgSHud"]) {
       requiredElement(id, HTMLButtonElement).addEventListener(
         "click",
         handlers.toggleSound,
       );
     }
-    for (const id of ["tgV", "tgV2"]) {
+    for (const id of ["tgV", "tgV2", "tgVHud"]) {
       requiredElement(id, HTMLButtonElement).addEventListener(
         "click",
         handlers.toggleVibration,
@@ -226,6 +230,12 @@ export class Ui {
     this.scA.textContent = String(state.scA);
     this.levelName.textContent = state.levelConfig.name;
     this.rally.textContent = `RALLY ${state.rally}`;
+    this.playStatus.textContent =
+      state.phase === "serve" && state.server === "P"
+        ? "サーブを選ぶ"
+        : state.phase === "rally"
+          ? "ラリー中"
+          : "";
     this.serveP.className = `serve${state.server === "P" ? " on" : ""}`;
     this.serveA.className = `serve${state.server === "A" ? " on" : ""}`;
     document.body.dataset.phase = state.phase;
@@ -445,6 +455,8 @@ export class Ui {
   ): void {
     this.playerName.textContent = name;
     this.hudPlayerName.textContent = name;
+    this.hudPlayerName.setAttribute("aria-label", name);
+    this.hudPlayerName.title = name;
     this.playerRecord.textContent =
       stats === null ? "" : formatRecordLabel(stats);
   }
@@ -579,17 +591,15 @@ export class Ui {
   }
 
   public syncToggles(state: GameState): void {
-    for (const id of ["tgS", "tgS2"]) {
-      requiredElement(id, HTMLButtonElement).classList.toggle(
-        "on",
-        state.sound,
-      );
+    for (const id of ["tgS", "tgS2", "tgSHud"]) {
+      const button = requiredElement(id, HTMLButtonElement);
+      button.classList.toggle("on", state.sound);
+      button.setAttribute("aria-pressed", String(state.sound));
     }
-    for (const id of ["tgV", "tgV2"]) {
-      requiredElement(id, HTMLButtonElement).classList.toggle(
-        "on",
-        state.vibe,
-      );
+    for (const id of ["tgV", "tgV2", "tgVHud"]) {
+      const button = requiredElement(id, HTMLButtonElement);
+      button.classList.toggle("on", state.vibe);
+      button.setAttribute("aria-pressed", String(state.vibe));
     }
   }
 }

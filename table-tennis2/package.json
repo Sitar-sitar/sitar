@@ -1,6 +1,6 @@
 {
   "name": "sitar-table-tennis2",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "スマートフォン横画面で遊べる卓球ゲームの開発・検証環境",

@@ -111,6 +111,10 @@ body[data-viewport="too-small"] {
 }
 
 .app-rail--right {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
   padding: 8px;
   border-left: 1px solid #26313c;
 }
@@ -121,6 +125,31 @@ body[data-viewport="too-small"] {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.16em;
+}
+
+.match-context {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid #26313c;
+}
+
+.match-context__label {
+  color: #63727f;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.match-context__value {
+  overflow: hidden;
+  color: var(--led);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .feature-slot:empty {
@@ -139,7 +168,6 @@ body[data-viewport="too-small"] {
 
 .stage #cv,
 .stage #board,
-.stage #gear,
 .stage #flash,
 .stage #hint {
   position: absolute;
@@ -172,72 +200,89 @@ body[data-server="A"] .stage #hint {
 }
 
 #board {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: stretch;
-  gap: 1px;
-  background: #05080b;
-  border: 1px solid #26313c;
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+  top: 8px;
+  right: 8px;
+  left: 8px;
+  display: grid;
+  height: 44px;
+  grid-template-columns: 76px minmax(0, 1fr) 76px;
+  align-items: start;
   pointer-events: none;
 }
 
-.cell {
-  background: var(--panel);
-  padding: 7px 12px 8px;
+.score-badge {
+  box-sizing: border-box;
+  width: 76px;
+  height: 44px;
+  padding: 3px 8px 2px;
+  overflow: hidden;
+  border: 1px solid #2b3742;
+  border-radius: 9px;
+  background: rgb(8 13 18 / 82%);
+  box-shadow: 0 5px 16px rgb(0 0 0 / 36%);
   text-align: center;
-  min-width: 66px;
+  backdrop-filter: blur(6px);
 }
 
-.cell .lbl {
+.score-badge--player {
+  justify-self: end;
+}
+
+.score-badge .lbl {
+  overflow: hidden;
+  margin-bottom: 1px;
+  color: #8fa0ad;
   font-size: 10px;
+  line-height: 1.1;
   letter-spacing: 0.14em;
-  color: #7d8b98;
-  margin-bottom: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #hudPlayerName {
   display: inline-block;
-  max-width: 82px;
+  max-width: 52px;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: bottom;
   white-space: nowrap;
 }
 
-.cell .num {
+.score-badge .num {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 27px;
-  line-height: 1;
-  font-weight: 700;
   color: var(--led);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 0.9;
   letter-spacing: 0.04em;
   text-shadow: 0 0 12px rgb(255 194 75 / 35%);
 }
 
-.cell.mid {
-  min-width: auto;
-  padding: 7px 9px;
+.match-meta {
   display: flex;
-  flex-direction: column;
+  box-sizing: border-box;
+  width: 112px;
+  height: 24px;
+  align-items: center;
+  justify-self: center;
   justify-content: center;
-}
-
-.cell.mid .lv {
-  font-size: 11px;
+  gap: 2px;
+  padding: 0 8px;
+  border: 1px solid #26313c;
+  border-radius: 999px;
+  background: rgb(8 13 18 / 76%);
   color: #9fb0bd;
+  font-size: 10px;
+  line-height: 1;
   letter-spacing: 0.08em;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 28%);
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
 }
 
-.cell.mid .rally {
-  font-size: 10px;
+#rally {
   color: #63727f;
-  margin-top: 3px;
+  font-size: 9px;
 }
 
 .serve {
@@ -253,6 +298,11 @@ body[data-server="A"] .stage #hint {
 .serve.on {
   background: var(--ball);
   box-shadow: 0 0 8px var(--ball);
+}
+
+.score-badge--player .serve {
+  margin-right: 5px;
+  margin-left: 0;
 }
 
 #flash {
@@ -288,20 +338,63 @@ body[data-server="A"] #hint {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
 }
 
-#gear {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
-  right: 12px;
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
+.rail-match-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rail-action {
+  width: min(100%, 96px);
+  min-height: 44px;
+  align-self: center;
   border: 1px solid #2b3742;
-  background: rgb(13 18 24 / 80%);
-  color: #9fb0bd;
-  font-size: 17px;
-  display: grid;
-  place-items: center;
+  border-radius: 10px;
+  background: rgb(13 18 24 / 86%);
+  color: #b7c4ce;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   backdrop-filter: blur(6px);
+}
+
+.rail-action.on {
+  border-color: #41765a;
+  color: var(--led);
+}
+
+.play-status {
+  min-height: 22px;
+  padding: 5px 8px;
+  border: 1px solid #26313c;
+  border-radius: 999px;
+  color: #7ee0a8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+body[data-phase="serve"][data-server="P"] .rail-action--secondary {
+  display: none;
+}
+
+body[data-phase="serve"][data-server="P"] .app-rail--right {
+  gap: 4px;
+  padding-block: 4px;
+}
+
+body[data-phase="serve"][data-server="P"] .rail-match-tools {
+  gap: 2px;
+}
+
+body[data-phase="serve"][data-server="P"] .play-status {
+  min-height: 16px;
+  padding: 2px 4px;
+  border: 0;
+  font-size: 9px;
+  line-height: 1.2;
 }
 
 .serve-controls {
@@ -816,14 +909,6 @@ h2 {
 }
 
 @media (max-height: 650px) and (orientation: landscape) {
-  #board {
-    top: calc(env(safe-area-inset-top, 0px) + 5px);
-  }
-
-  #gear {
-    top: calc(env(safe-area-inset-top, 0px) + 7px);
-  }
-
   .ov {
     padding-block: 18px;
   }
@@ -840,5 +925,44 @@ h2 {
 
   .serve-controls__label {
     margin-bottom: 3px;
+  }
+}
+
+@media (min-width: 760px) and (orientation: landscape) {
+  #board {
+    top: 10px;
+    right: 12px;
+    left: 12px;
+    height: 48px;
+    grid-template-columns: 92px minmax(0, 1fr) 92px;
+  }
+
+  .score-badge {
+    width: 92px;
+    height: 48px;
+    padding: 4px 10px 3px;
+    border-radius: 10px;
+  }
+
+  .score-badge .lbl {
+    font-size: 11px;
+  }
+
+  .score-badge .num {
+    font-size: 30px;
+  }
+
+  #hudPlayerName {
+    max-width: 68px;
+  }
+
+  .match-meta {
+    width: 132px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  #rally {
+    font-size: 10px;
   }
 }

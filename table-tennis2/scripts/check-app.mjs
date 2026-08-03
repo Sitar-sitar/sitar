@@ -36,6 +36,13 @@ for (const elementId of [
   "playerName",
   "playerRecord",
   "hudPlayerName",
+  "opponentScoreCard",
+  "matchMeta",
+  "playerScoreCard",
+  "railMatchTools",
+  "tgSHud",
+  "tgVHud",
+  "playStatus",
   "players",
   "stats",
   "rRecord",
@@ -110,6 +117,7 @@ for (const sourcePath of [
   "src/view/orientation.ts",
   "src/view/suspension.ts",
   "src/ui/feature.ts",
+  "src/ui/features/match-context.ts",
   "src/ui/features/serve-panel.ts",
 ]) {
   await access(resolve(root, sourcePath));

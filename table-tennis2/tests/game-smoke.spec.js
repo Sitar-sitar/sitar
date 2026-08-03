@@ -32,6 +32,141 @@ test("難易度を変更して一時停止できる", async ({ page }) => {
   await expect(page.locator("#pause")).not.toHaveClass(/show/u);
 });
 
+test("844×390では得点をstage両上隅へ分離する", async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  const boxes = await page.evaluate(() => {
+    const rect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) {
+        throw new Error(`${selector} が見つかりません。`);
+      }
+      const value = element.getBoundingClientRect();
+      return {
+        x: value.x,
+        y: value.y,
+        width: value.width,
+        height: value.height,
+        right: value.right,
+        bottom: value.bottom,
+      };
+    };
+    return {
+      stage: rect("#stage"),
+      opponent: rect("#opponentScoreCard"),
+      meta: rect("#matchMeta"),
+      player: rect("#playerScoreCard"),
+      gear: rect("#gear"),
+      rightRail: rect("#rightRail"),
+    };
+  });
+
+  expect(boxes.opponent.height).toBeLessThanOrEqual(48);
+  expect(boxes.player.height).toBeLessThanOrEqual(48);
+  expect(boxes.meta.height).toBeLessThanOrEqual(28);
+  expect(boxes.opponent.x).toBeGreaterThanOrEqual(boxes.stage.x);
+  expect(boxes.player.right).toBeLessThanOrEqual(boxes.stage.right);
+  expect(boxes.opponent.right).toBeLessThan(boxes.meta.x);
+  expect(boxes.meta.right).toBeLessThan(boxes.player.x);
+  expect(boxes.opponent.right).toBeLessThan(
+    boxes.stage.x + boxes.stage.width / 2,
+  );
+  expect(boxes.player.x).toBeGreaterThan(
+    boxes.stage.x + boxes.stage.width / 2,
+  );
+  expect(boxes.gear.x).toBeGreaterThanOrEqual(boxes.rightRail.x);
+  expect(boxes.gear.right).toBeLessThanOrEqual(boxes.rightRail.right);
+
+  await expect(page.locator("#leftRail")).toBeVisible();
+  await expect(page.locator("[data-match-server]")).toHaveText("あなた");
+});
+
+test("568×320でも両得点とサーブ操作を画面内に保つ", async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  await expect(page.locator("#leftRail")).toBeHidden();
+  await expect(page.locator("#opponentScoreCard")).toBeVisible();
+  await expect(page.locator("#playerScoreCard")).toBeVisible();
+  await expect(page.locator("#matchMeta")).toBeVisible();
+  await expect(page.locator("#tgSHud")).toBeHidden();
+  await expect(page.locator("#tgVHud")).toBeHidden();
+
+  const boxes = await page.evaluate(() => {
+    const selectors = [
+      "#stage",
+      "#opponentScoreCard",
+      "#matchMeta",
+      "#playerScoreCard",
+      "#rightRail",
+      "#gear",
+      "#serveControls",
+    ];
+    return Object.fromEntries(
+      selectors.map((selector) => {
+        const element = document.querySelector(selector);
+        if (!(element instanceof HTMLElement)) {
+          throw new Error(`${selector} が見つかりません。`);
+        }
+        const rect = element.getBoundingClientRect();
+        return [selector, {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          right: rect.right,
+          bottom: rect.bottom,
+        }];
+      }),
+    );
+  });
+
+  expect(boxes["#opponentScoreCard"].height).toBeLessThanOrEqual(44);
+  expect(boxes["#playerScoreCard"].height).toBeLessThanOrEqual(44);
+  expect(boxes["#matchMeta"].height).toBeLessThanOrEqual(24);
+  for (const selector of [
+    "#opponentScoreCard",
+    "#matchMeta",
+    "#playerScoreCard",
+  ]) {
+    expect(boxes[selector].x).toBeGreaterThanOrEqual(boxes["#stage"].x);
+    expect(boxes[selector].right).toBeLessThanOrEqual(
+      boxes["#stage"].right,
+    );
+  }
+  expect(boxes["#gear"].width).toBeGreaterThanOrEqual(44);
+  expect(boxes["#gear"].height).toBeGreaterThanOrEqual(44);
+  expect(boxes["#serveControls"].bottom).toBeLessThanOrEqual(320);
+});
+
+test("HUDから音と振動を切り替え一時停止表示と同期する", async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/");
+  await page.locator("#start").click();
+  await page.locator("#cv").click({ position: { x: 100, y: 250 } });
+  await expect(page.locator("body")).toHaveAttribute("data-phase", "rally");
+
+  await expect(page.locator("#tgSHud")).toBeVisible();
+  await expect(page.locator("#tgVHud")).toBeVisible();
+  await page.locator("#tgSHud").click();
+  await page.locator("#tgVHud").click();
+  await expect(page.locator("#tgSHud")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#tgVHud")).toHaveAttribute("aria-pressed", "false");
+
+  await page.locator("#gear").click();
+  await expect(page.locator("#tgS2")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#tgV2")).toHaveAttribute("aria-pressed", "false");
+});
+
 test("PWA登録とオフライン用キャッシュを確認できる", async ({
   browserName,
   context,
@@ -149,7 +284,7 @@ test("Service Workerは他世代キャッシュの同一URLを参照しない", 
 
   const result = await page.evaluate(async () => {
     const currentName = (await caches.keys()).find(
-      (key) => key === "table-tennis2-v0.1.0",
+      (key) => key === "table-tennis2-v0.1.1",
     );
     if (!currentName) throw new Error("現行キャッシュがありません。");
     const current = await caches.open(currentName);

@@ -1,4 +1,4 @@
-const CACHE_NAME = "table-tennis2-v0.1.0";
+const CACHE_NAME = "table-tennis2-v0.1.1";
 const APP_SHELL = [
   "./",
   "./index.html",
