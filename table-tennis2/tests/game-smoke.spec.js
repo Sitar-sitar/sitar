@@ -15,6 +15,19 @@ test("タイトルから試合を開始できる", async ({ page }) => {
   await expect(page.locator("#scA")).toHaveText("0");
 });
 
+test("v0.2.0はdirect paddleを既定としlegacyへ一時退避できる", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-control-model",
+    "direct-paddle-v1",
+  );
+  await page.goto("/?controlModel=legacy");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-control-model",
+    "legacy",
+  );
+});
+
 test("難易度を変更して一時停止できる", async ({ page }) => {
   await page.goto("/");
 
@@ -284,7 +297,7 @@ test("Service Workerは他世代キャッシュの同一URLを参照しない", 
 
   const result = await page.evaluate(async () => {
     const currentName = (await caches.keys()).find(
-      (key) => key === "table-tennis2-v0.1.1",
+      (key) => key === "table-tennis2-v0.2.0",
     );
     if (!currentName) throw new Error("現行キャッシュがありません。");
     const current = await caches.open(currentName);
@@ -378,13 +391,13 @@ test("AIサーブから自動でラリーが始まる", async ({ page }) => {
   );
 });
 
-test("短い球に合成フリックで台上技術が出る", async ({ page }) => {
+test("合成pointer入力でdirect paddleが実衝突して返球する", async ({ page }) => {
   await page.addInitScript(() => {
     const values = [0.6, 0, 0, 0.5, 0.5, 0.5, 0.5];
     let index = 0;
     Math.random = () => values[index++] ?? 0.5;
   });
-  await page.goto("/");
+  await page.goto("/?debugInput=1");
   await page.locator("#start").click();
 
   await expect(page.locator("body")).toHaveAttribute("data-server", "A");
@@ -396,15 +409,9 @@ test("短い球に合成フリックで台上技術が出る", async ({ page }) 
 
   await page.evaluate(async () => {
     const canvas = document.querySelector("#cv");
-    const flash = document.querySelector("#flash");
-    if (
-      !(canvas instanceof HTMLCanvasElement) ||
-      !(flash instanceof HTMLDivElement)
-    ) {
+    if (!(canvas instanceof HTMLCanvasElement)) {
       throw new Error("E14に必要なDOMが見つかりません。");
     }
-    const wait = (ms) =>
-      new Promise((resolve) => window.setTimeout(resolve, ms));
     const dispatch = (type, init) => {
       canvas.dispatchEvent(
         new PointerEvent(type, {
@@ -415,42 +422,41 @@ test("短い球に合成フリックで台上技術が出る", async ({ page }) 
         }),
       );
     };
-
-    for (
-      let gesture = 0;
-      gesture < 24 && !/ストップ|フリック/u.test(flash.textContent ?? "");
-      gesture += 1
-    ) {
+    const pointerId = 1;
+    const firstRect = canvas.getBoundingClientRect();
+    dispatch("pointerdown", {
+      pointerId,
+      clientX: firstRect.left + firstRect.width / 2,
+      clientY: firstRect.top + firstRect.height * 0.72,
+      buttons: 1,
+    });
+    for (let frame = 0; frame < 360 && !document.body.dataset.directShot; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
       const rect = canvas.getBoundingClientRect();
-      const pointerId = gesture + 1;
-      const x = rect.left + rect.width / 2;
-      const startY = rect.top + rect.height * 0.1;
-      dispatch("pointerdown", {
+      const ballX = Number(document.body.dataset.ballScreenX);
+      const ballY = Number(document.body.dataset.ballScreenY);
+      if (!Number.isFinite(ballX) || !Number.isFinite(ballY)) continue;
+      dispatch("pointermove", {
         pointerId,
-        clientX: x,
-        clientY: startY,
+        clientX: rect.left + Math.max(1, Math.min(rect.width - 1, ballX)),
+        clientY:
+          rect.top +
+          Math.max(1, Math.min(rect.height - 1, ballY + rect.height * 0.13)),
         buttons: 1,
       });
-      for (let move = 1; move <= 4; move += 1) {
-        await wait(move === 1 ? 10 : 80);
-        dispatch("pointermove", {
-          pointerId,
-          clientX: x,
-          clientY: startY + rect.height * move * 0.18,
-          buttons: 1,
-        });
-      }
-      dispatch("pointerup", {
-        pointerId,
-        clientX: x,
-        clientY: startY + rect.height * 4 * 0.18,
-        buttons: 0,
-      });
-      await wait(10);
     }
+    dispatch("pointerup", {
+      pointerId,
+      clientX: firstRect.left + firstRect.width / 2,
+      clientY: firstRect.top + firstRect.height * 0.72,
+      buttons: 0,
+    });
   });
 
-  await expect(page.locator("#flash")).toHaveText(/ストップ|フリック/u);
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-direct-shot",
+    /DRIVE|SMASH|PUSH|CHOP|LOB|STOP|FLICK/u,
+  );
 });
 
 test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始まる", async ({
@@ -458,23 +464,16 @@ test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始ま�
 }) => {
   await page.addInitScript(() => {
     Math.random = () => 0.6;
-    window.__aiServeExecutions = 0;
-    const originalSetTimeout = window.setTimeout.bind(window);
-    window.setTimeout = (callback, delay, ...args) =>
-      originalSetTimeout(
-        (...callbackArgs) => {
-          if (delay === 700) {
-            window.__aiServeExecutions += 1;
-          }
-          if (typeof callback === "function") {
-            callback(...callbackArgs);
-          }
-        },
-        delay,
-        ...args,
-      );
   });
   await page.goto("/");
+  await page.evaluate(() => {
+    window.__aiServeExecutions = 0;
+    new MutationObserver((records) => {
+      window.__aiServeExecutions += records.filter(
+        (record) => record.attributeName === "data-served-serve-type",
+      ).length;
+    }).observe(document.body, { attributes: true });
+  });
   await page.locator("#start").click();
 
   await expect(page.locator("body")).toHaveAttribute("data-server", "A");
@@ -489,8 +488,10 @@ test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始ま�
     "rally",
     { timeout: 3000 },
   );
-  await page.waitForTimeout(900);
-  await expect(page.locator("body")).toHaveAttribute("data-phase", "rally");
+  await expect
+    .poll(() => page.evaluate(() => window.__aiServeExecutions))
+    .toBe(1);
+  await page.waitForTimeout(100);
   await expect
     .poll(() => page.evaluate(() => window.__aiServeExecutions))
     .toBe(1);

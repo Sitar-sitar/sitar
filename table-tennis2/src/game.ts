@@ -29,7 +29,10 @@ import {
   TRAIL_LENGTH,
 } from "./config.ts";
 import { Feedback } from "./feedback.ts";
-import { InputController } from "./input.ts";
+import { sweptPaddleContact } from "./control/contact.ts";
+import { PaddleController, type PaddleStepSegment } from "./control/paddle.ts";
+import { buildShotIntent } from "./control/shot-intent.ts";
+import { InputController, type InputFrame } from "./input.ts";
 import {
   integrate,
   launch,
@@ -37,6 +40,7 @@ import {
   predictAt,
   simLand,
   solveContactPlane,
+  solveDirectPlayerShot,
   solveServe,
   solveShot,
   tableBounce,
@@ -54,6 +58,7 @@ import {
 import type {
   BallState,
   BallVector,
+  ControlModel,
   Flick,
   GameState,
   LevelId,
@@ -70,6 +75,7 @@ import type {
 } from "./types.ts";
 import { Ui } from "./ui.ts";
 import { isSuspended } from "./view/suspension.ts";
+import { createProjectionCamera, projectWorldPoint } from "./view/projection.ts";
 import {
   clamp,
   moveToward,
@@ -134,6 +140,10 @@ export class Game {
   private serveGeneration = 0;
   private input: InputController | null = null;
   private renderer: Renderer | null = null;
+  private readonly directPaddle = new PaddleController();
+  private paddleStep: PaddleStepSegment | null = null;
+  private flightId = 0;
+  private lastPlayerContactFlightId = -1;
   private lastFrame = 0;
   private accumulator = 0;
   private loopStarted = false;
@@ -155,6 +165,8 @@ export class Game {
     private readonly ui: Ui,
     private readonly feedback: Feedback,
     private readonly random: () => number = Math.random,
+    private readonly controlModel: ControlModel = "direct-paddle-v1",
+    private readonly debugInput = false,
   ) {
     this.ai = new OpponentAi(random);
   }
@@ -238,7 +250,35 @@ export class Game {
       trail: this.trail,
       mark: this.mark,
       smashable: this.smashable,
+      controlModel: this.controlModel,
+      directPlayerPose: this.directPaddle.getRenderPose(),
+      debugInput: this.debugInput,
+      debugStroke: this.debugInput ? this.directPaddle.getDebugStroke() : [],
     };
+  }
+
+  public updatePlayerInput(frame: InputFrame): void {
+    if (this.isSuspended()) return;
+    if (this.controlModel === "legacy") {
+      this.updatePlayerTarget(frame.sample.stageX);
+      return;
+    }
+    this.directPaddle.applyInput(frame, this.player.z, this.player.viewZ);
+    const pose = this.directPaddle.getRenderPose();
+    if (pose) {
+      this.player.tx = pose.worldX;
+    }
+  }
+
+  public releasePlayerInput(time: number): void {
+    if (this.controlModel === "direct-paddle-v1") {
+      this.directPaddle.release(time);
+    }
+  }
+
+  public resetPlayerInput(): void {
+    this.directPaddle.reset();
+    this.paddleStep = null;
   }
 
   public updatePlayerTarget(stageX: number): void {
@@ -307,16 +347,44 @@ export class Game {
       0,
       this.ai.state.swing - plan.frameDelta * SWING_DECAY,
     );
+    if (this.controlModel === "direct-paddle-v1") {
+      const viewport = this.renderer?.getViewport();
+      if (viewport) {
+        this.directPaddle.updateVisual(
+          plan.frameDelta,
+          viewport.width,
+          viewport.height,
+        );
+      }
+    }
     this.renderer?.render();
   };
 
   private tick(dt: number): void {
     this.simulationTime += dt;
-    this.player.x = moveToward(
-      this.player.x,
-      this.player.tx,
-      P_SPEED * dt,
-    );
+    if (this.controlModel === "direct-paddle-v1") {
+      const viewport = this.renderer?.getViewport();
+      this.paddleStep = viewport
+        ? this.directPaddle.stepFixed(
+            dt,
+            this.simulationTime,
+            viewport.width,
+            viewport.height,
+            this.player.z,
+            this.player.viewZ,
+          )
+        : null;
+      if (this.paddleStep) {
+        this.player.x = this.paddleStep.current.worldX;
+        this.player.tx = this.player.x;
+      }
+    } else {
+      this.player.x = moveToward(
+        this.player.x,
+        this.player.tx,
+        P_SPEED * dt,
+      );
+    }
     this.player.viewZ = stepViewZ(
       this.player.viewZ,
       this.player.z,
@@ -339,6 +407,29 @@ export class Game {
     }
     if (this.state.phase === "rally") {
       this.ui.updateHud(this.state);
+    }
+    this.syncDebugInputState();
+  }
+
+  private syncDebugInputState(): void {
+    if (!this.debugInput) return;
+    const viewport = this.renderer?.getViewport();
+    if (!viewport) return;
+    const projected = projectWorldPoint(
+      createProjectionCamera(viewport.width, viewport.height),
+      this.ball.x,
+      this.ball.y,
+      this.ball.z,
+    );
+    document.body.dataset.ballScreenX = projected.x.toFixed(2);
+    document.body.dataset.ballScreenY = projected.y.toFixed(2);
+    document.body.dataset.ballHitter = this.ball.hitter;
+    document.body.dataset.ballBounces = String(this.ball.bounces);
+    const pose = this.directPaddle.getRenderPose();
+    if (pose) {
+      document.body.dataset.paddleScreenX = pose.screenX.toFixed(2);
+      document.body.dataset.paddleScreenY = pose.screenY.toFixed(2);
+      document.body.dataset.paddlePhase = pose.phase;
     }
   }
 
@@ -673,6 +764,7 @@ export class Game {
     this.ball.bounces = 0;
     this.ball.serveStage = 1;
     this.ball.live = true;
+    this.flightId += 1;
     this.trail.length = 0;
     this.state.phase = "rally";
     this.state.rally = 1;
@@ -743,6 +835,7 @@ export class Game {
     this.ball.live = true;
     this.ball.serveStage = 0;
     this.ball.lastBounceZ = null;
+    this.flightId += 1;
     this.trail.length = 0;
     this.feedback.hit(
       Math.min(
@@ -799,6 +892,16 @@ export class Game {
     const previousX = this.ball.x;
     const previousY = this.ball.y;
     const previousZ = this.ball.z;
+    const previousBall: BallVector = {
+      x: this.ball.x,
+      y: this.ball.y,
+      z: this.ball.z,
+      vx: this.ball.vx,
+      vy: this.ball.vy,
+      vz: this.ball.vz,
+      spin: this.ball.spin,
+      side: this.ball.side,
+    };
     integrate(this.ball, dt);
 
     this.trail.push({
@@ -851,7 +954,9 @@ export class Game {
       return;
     }
 
-    if (previousZ > this.player.z && this.ball.z <= this.player.z) {
+    if (this.controlModel === "direct-paddle-v1") {
+      this.directPlayerContact(previousBall);
+    } else if (previousZ > this.player.z && this.ball.z <= this.player.z) {
       this.playerContact();
     }
     if (
@@ -961,6 +1066,93 @@ export class Game {
     this.mark = null;
   }
 
+  private directPlayerContact(previousBall: BallVector): void {
+    if (
+      this.ball.hitter === "P" ||
+      this.ball.bounces < 1 ||
+      this.ball.vz >= 0 ||
+      this.state.phase !== "rally" ||
+      this.lastPlayerContactFlightId === this.flightId ||
+      !this.paddleStep ||
+      !this.directPaddle.isContactEligible(this.simulationTime)
+    ) {
+      return;
+    }
+    const viewport = this.renderer?.getViewport();
+    if (!viewport) return;
+    const contact = sweptPaddleContact({
+      previousBall,
+      currentBall: this.ball,
+      previousPaddle: this.paddleStep.previous,
+      currentPaddle: this.paddleStep.current,
+      metrics: this.directPaddle.getMetrics(),
+      width: viewport.width,
+      height: viewport.height,
+      time: this.simulationTime,
+    });
+    if (!contact) return;
+
+    const intent = buildShotIntent(contact, this.ball.lastBounceZ);
+    const incoming = { spin: this.ball.spin, side: this.ball.side };
+    const from = {
+      x: this.ball.x,
+      y: Math.max(this.ball.y, SHOT_ORIGIN_Y_MIN),
+      z: this.ball.z,
+    };
+    this.lastPlayerContactFlightId = this.flightId;
+    const solution = solveDirectPlayerShot({
+      from,
+      incoming,
+      intent,
+      random: this.random,
+    });
+    if (!solution) {
+      this.ui.flash("返球できませんでした", "#ff8a6b", 0.7);
+      console.warn("DIRECT_SHOT_SOLVER_INVALID");
+      return;
+    }
+
+    Object.assign(this.ball, from, solution);
+    this.ball.hitter = "P";
+    this.ball.bounces = 0;
+    this.ball.live = true;
+    this.ball.serveStage = 0;
+    this.ball.lastBounceZ = null;
+    this.flightId += 1;
+    this.trail.length = 0;
+    this.mark = null;
+    this.player.swing = 1;
+    this.player.swingType = swingTypeOf(intent.classifiedShot);
+    this.state.rally += 1;
+    this.directPaddle.beginContact(this.simulationTime);
+    this.feedback.hit(
+      Math.min(1, Math.hypot(solution.vx, solution.vy, solution.vz) / 1500),
+    );
+    const shot = SHOTS[intent.classifiedShot];
+    this.ui.flash(
+      shot.lab,
+      intent.classifiedShot === "SMASH" ? "#ffc24b" : "#e8eef3",
+      intent.classifiedShot === "SMASH" ? 1 : 0.7,
+    );
+    this.ai.state.z = this.contactPlane("A");
+    this.ai.plan(this.ball, this.simulationTime, this.state.level);
+
+    if (this.debugInput) {
+      document.body.dataset.directShot = intent.classifiedShot;
+      document.body.dataset.lastShot = intent.classifiedShot;
+      document.body.dataset.contactQuality = intent.contactQuality.toFixed(3);
+      document.body.dataset.contactQualityBand =
+        intent.contactQuality >= 0.67
+          ? "high"
+          : intent.contactQuality >= 0.34
+            ? "middle"
+            : "low";
+      document.body.dataset.sideSpinSign =
+        solution.side > 0.02 ? "positive" : solution.side < -0.02 ? "negative" : "zero";
+      document.body.dataset.shotPower = intent.power.toFixed(3);
+    }
+  }
+
   private opponentContact(): void {
     if (this.ball.hitter === "A" || this.ball.bounces < 1) {
       return;
@@ -999,6 +1191,7 @@ export class Game {
       this.feedback.lose();
     }
     this.ball.live = false;
+    this.input?.reset();
     this.mark = null;
     this.smashable = false;
     this.state.phase = "point";

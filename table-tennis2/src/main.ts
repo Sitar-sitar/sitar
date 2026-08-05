@@ -8,6 +8,7 @@ import { formatRecordLabel, summarize } from "./stats.ts";
 import { StorageDataError } from "./storage-schema.ts";
 import { StatsStore } from "./storage.ts";
 import type {
+  ControlModel,
   MatchResult,
   PlayerRecord,
   PlayerSelection,
@@ -35,12 +36,17 @@ if (
 }
 
 const ui = new Ui();
+const query = new URLSearchParams(window.location.search);
+const controlModel: ControlModel =
+  query.get("controlModel") === "legacy" ? "legacy" : "direct-paddle-v1";
+const debugInput = query.get("debugInput") === "1";
+document.body.dataset.controlModel = controlModel;
 const gameHolder: { current?: Game } = {};
 const feedback = new Feedback(() => ({
   sound: gameHolder.current?.state.sound ?? true,
   vibe: gameHolder.current?.state.vibe ?? true,
 }));
-const game = new Game(ui, feedback);
+const game = new Game(ui, feedback, Math.random, controlModel, debugInput);
 gameHolder.current = game;
 const featureHosts = {
   "left-rail": document.getElementById("leftRail"),
@@ -77,9 +83,9 @@ let selectedPlayer: PlayerRecord | null = null;
 
 const renderer = new Renderer(canvas, () => game.getRenderScene());
 const input = new InputController(canvas, {
-  onPosition: (stageX) => {
-    game.updatePlayerTarget(stageX);
-  },
+  onInput: (frame) => game.updatePlayerInput(frame),
+  onRelease: (time) => game.releasePlayerInput(time),
+  onReset: () => game.resetPlayerInput(),
   onServe: (flick) => game.tryPlayerServe(flick),
   onUserGesture: () => {
     feedback.initializeAudio();

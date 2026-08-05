@@ -19,15 +19,12 @@ import {
   paddleScreenRadius,
   paddleScreenY,
   paddleShadowY,
-  projectScale,
 } from "./utils.ts";
 import { computeCamera } from "./view/camera.ts";
-
-interface ProjectedPoint {
-  x: number;
-  y: number;
-  s: number;
-}
+import {
+  projectWorldPoint,
+  type ProjectedPoint,
+} from "./view/projection.ts";
 
 export class Renderer {
   private readonly context: CanvasRenderingContext2D;
@@ -72,6 +69,7 @@ export class Renderer {
     this.drawMark();
     this.drawBall();
     this.drawPlayerPaddle();
+    this.drawDebugStroke();
   }
 
   public destroy(): void {
@@ -111,12 +109,7 @@ export class Renderer {
   };
 
   private project(x: number, y: number, z: number): ProjectedPoint {
-    const scale = projectScale(this.camera.f, this.camera.z, z);
-    return {
-      x: this.camera.cx + (x - this.camera.x) * scale,
-      y: this.camera.cy - (y - this.camera.y) * scale,
-      s: scale,
-    };
+    return projectWorldPoint(this.camera, x, y, z);
   }
 
   private quad(
@@ -512,6 +505,9 @@ export class Renderer {
     scale: number,
     color: string,
     angle: number,
+    bladeAngle = 0,
+    squash = 1,
+    contactFlash = 0,
   ): void {
     const context = this.context;
     const radius = Math.max(6, 9.6 * scale * PADDLE_BLADE_SCALE);
@@ -544,12 +540,14 @@ export class Renderer {
     context.restore();
 
     context.save();
+    context.translate(point.x, point.y);
+    context.rotate(bladeAngle);
     context.beginPath();
     context.ellipse(
-      point.x,
-      point.y,
+      0,
+      0,
       radius,
-      radius * 0.94,
+      radius * 0.94 * squash,
       0,
       0,
       7,
@@ -561,16 +559,23 @@ export class Renderer {
     context.stroke();
     context.beginPath();
     context.ellipse(
-      point.x,
-      point.y - radius * 0.22,
+      0,
+      -radius * 0.22,
       radius * 0.62,
-      radius * 0.4,
+      radius * 0.4 * squash,
       0,
       0,
       7,
     );
     context.fillStyle = "rgba(255,255,255,.10)";
     context.fill();
+    if (contactFlash > 0) {
+      context.beginPath();
+      context.ellipse(0, 0, radius * 1.22, radius * 1.13 * squash, 0, 0, 7);
+      context.strokeStyle = `rgba(255,224,117,${0.85 * contactFlash})`;
+      context.lineWidth = Math.max(2, radius * 0.16);
+      context.stroke();
+    }
     context.restore();
   }
 
@@ -578,17 +583,20 @@ export class Renderer {
     const scene = this.requiredScene();
     const player = scene.player;
     const context = this.context;
+    const direct = scene.controlModel === "direct-paddle-v1"
+      ? scene.directPlayerPose
+      : null;
     const swing =
       player.swing > 0 ? Math.sin(player.swing * Math.PI) : 0;
     // 横位置は打球判定と同じ平面 player.z で投影する（viewZ を使わない）。
-    const x = this.project(player.x, 0, player.z).x;
+    const x = direct?.screenX ?? this.project(player.x, 0, player.z).x;
     const depth = paddleDepthRatio(player.viewZ);
     const radius = paddleScreenRadius(this.width, this.height, depth);
-    const y = clampPaddleScreenY(
-      paddleScreenY(this.height, swing, player.swingType, depth),
-      this.height,
-      radius,
-    );
+    const y = direct?.screenY ?? clampPaddleScreenY(
+        paddleScreenY(this.height, swing, player.swingType, depth),
+        this.height,
+        radius,
+      );
 
     const shadowAlpha = 0.28 - swing * 0.16;
     const shadowRadiusX = radius * (0.9 - swing * 0.2);
@@ -621,8 +629,27 @@ export class Renderer {
       { x, y, s: 1 },
       radius / 9.6,
       "#cb4335",
-      paddleHandleAngle(swing, player.swingType),
+      direct?.angle ?? paddleHandleAngle(swing, player.swingType),
+      direct?.angle ?? 0,
+      direct ? 1 - Math.abs(direct.tilt) * 0.15 : 1,
+      direct?.contactFlash ?? 0,
     );
+  }
+
+  private drawDebugStroke(): void {
+    const scene = this.requiredScene();
+    if (!scene.debugInput || scene.debugStroke.length < 2) return;
+    const context = this.context;
+    context.save();
+    context.beginPath();
+    scene.debugStroke.forEach((sample, index) => {
+      if (index === 0) context.moveTo(sample.stageX * this.width, sample.stageY * this.height);
+      else context.lineTo(sample.stageX * this.width, sample.stageY * this.height);
+    });
+    context.strokeStyle = "rgba(126,224,168,.8)";
+    context.lineWidth = 2;
+    context.stroke();
+    context.restore();
   }
 
   private drawBall(): void {

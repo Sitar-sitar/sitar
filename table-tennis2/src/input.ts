@@ -1,16 +1,31 @@
-import type { Flick } from "./types.ts";
-import { normalizeStageX } from "./view/input-math.ts";
+import { GESTURE_MIN_SPEED, STROKE_SNAPSHOT_TTL_SEC } from "./config.ts";
+import {
+  appendPointerSample,
+  computeStrokeMetrics,
+  normalizeStagePoint,
+} from "./control/stroke.ts";
+import type {
+  Flick,
+  PointerKind,
+  PointerSample,
+  StrokeMetrics,
+} from "./types.ts";
 
-interface InputCallbacks {
-  onPosition: (stageX: number) => void;
-  onServe: (flick: Flick | null) => boolean;
-  onUserGesture: () => void;
+export interface InputFrame {
+  sample: PointerSample;
+  metrics: StrokeMetrics;
+  history: readonly PointerSample[];
+  width: number;
+  height: number;
+  time: number;
 }
 
-interface InputSample {
-  x: number;
-  y: number;
-  t: number;
+interface InputCallbacks {
+  onInput: (frame: InputFrame) => void;
+  onRelease: (time: number) => void;
+  onReset: () => void;
+  onServe: (flick: Flick | null) => boolean;
+  onUserGesture: () => void;
 }
 
 export class InputController {
@@ -18,7 +33,7 @@ export class InputController {
   private down = false;
   private downAt = 0;
   private flick: Flick | null = null;
-  private readonly samples: InputSample[] = [];
+  private readonly samples: PointerSample[] = [];
   private servedDuringGesture = false;
 
   public constructor(
@@ -33,7 +48,10 @@ export class InputController {
   }
 
   public currentFlick(): Flick | null {
-    if (!this.flick || this.now() - this.flick.t >= 0.16) {
+    if (
+      !this.flick ||
+      this.now() - this.flick.t >= STROKE_SNAPSHOT_TTL_SEC
+    ) {
       return null;
     }
     return this.flick;
@@ -58,6 +76,7 @@ export class InputController {
     this.flick = null;
     this.samples.length = 0;
     this.servedDuringGesture = false;
+    this.callbacks.onReset();
   }
 
   public destroy(): void {
@@ -69,9 +88,7 @@ export class InputController {
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
-    if (!event.isPrimary || this.activePointerId !== null) {
-      return;
-    }
+    if (!event.isPrimary || this.activePointerId !== null) return;
     const rect = this.canvas.getBoundingClientRect();
     if (
       event.clientX < rect.left ||
@@ -89,8 +106,7 @@ export class InputController {
     this.flick = null;
     this.samples.length = 0;
     this.servedDuringGesture = false;
-    this.pushSample(event.clientX, event.clientY);
-    this.callbacks.onPosition(this.stageX(event.clientX, rect));
+    this.ingest(event, rect);
     try {
       this.canvas.setPointerCapture(event.pointerId);
     } catch {
@@ -107,9 +123,7 @@ export class InputController {
       return;
     }
     event.preventDefault();
-    this.pushSample(event.clientX, event.clientY);
-    this.callbacks.onPosition(this.stageX(event.clientX));
-
+    this.ingest(event);
     const current = this.currentFlick();
     if (
       current &&
@@ -122,23 +136,25 @@ export class InputController {
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
-    if (event.pointerId !== this.activePointerId) {
-      return;
-    }
+    if (event.pointerId !== this.activePointerId) return;
     event.preventDefault();
+    this.ingest(event);
+    const time = this.now();
     if (
       this.down &&
       !this.servedDuringGesture &&
-      this.now() - this.downAt < 0.25 &&
+      time - this.downAt < 0.25 &&
       !this.currentFlick()
     ) {
       this.servedDuringGesture = this.callbacks.onServe(null);
     }
+    this.callbacks.onRelease(time);
     this.release(event.pointerId);
   };
 
   private readonly onPointerCancel = (event: PointerEvent): void => {
     if (event.pointerId === this.activePointerId) {
+      this.callbacks.onRelease(this.now());
       this.release(event.pointerId);
     }
   };
@@ -161,44 +177,66 @@ export class InputController {
     this.servedDuringGesture = false;
   }
 
-  private pushSample(x: number, y: number): void {
-    const time = this.now();
-    this.samples.push({ x, y, t: time });
-    while (
-      this.samples.length > 1 &&
-      time - (this.samples[0]?.t ?? time) > 0.11
-    ) {
-      this.samples.shift();
+  private ingest(
+    event: PointerEvent,
+    rect = this.canvas.getBoundingClientRect(),
+  ): void {
+    let events: PointerEvent[] = [];
+    try {
+      events = event.getCoalescedEvents?.() ?? [];
+    } catch {
+      // Some embedded browsers expose the method but cannot read its buffer.
     }
+    const points = events.length > 0 ? [...events, event] : [event];
+    let lastFrame: InputFrame | null = null;
+    for (const point of points) {
+      const normalized = normalizeStagePoint(point.clientX, point.clientY, rect);
+      const sample: PointerSample = {
+        clientX: point.clientX,
+        clientY: point.clientY,
+        ...normalized,
+        time: this.eventTime(point),
+        pointerType: this.pointerKind(point.pointerType),
+      };
+      const appended = appendPointerSample(this.samples, sample);
+      if (!appended && point !== event) continue;
+      const metrics = computeStrokeMetrics(
+        this.samples,
+        rect.height,
+        appended ? sample.time : (this.samples.at(-1)?.time ?? sample.time),
+      );
+      if (metrics.speed > GESTURE_MIN_SPEED) {
+        this.flick = {
+          vx: metrics.vx,
+          vy: metrics.vy,
+          sp: metrics.speed,
+          t: sample.time,
+        };
+      }
+      lastFrame = {
+        sample,
+        metrics,
+        history: this.samples.slice(),
+        width: rect.width,
+        height: rect.height,
+        time: sample.time,
+      };
+    }
+    if (lastFrame) this.callbacks.onInput(lastFrame);
+  }
 
-    const first = this.samples[0];
-    const last = this.samples.at(-1);
-    if (!first || !last || first === last) {
-      return;
-    }
+  private eventTime(event: PointerEvent): number {
+    const candidate = event.timeStamp / 1_000;
+    return Number.isFinite(candidate) && candidate > 0 ? candidate : this.now();
+  }
 
-    const elapsed = last.t - first.t;
-    const height = Math.max(1, this.canvas.getBoundingClientRect().height);
-    if (elapsed <= 0.008) {
-      return;
-    }
-
-    const vx = (last.x - first.x) / elapsed / height;
-    const vy = (last.y - first.y) / elapsed / height;
-    const speed = Math.hypot(vx, vy);
-    if (speed > 1.25) {
-      this.flick = { vx, vy, sp: speed, t: time };
-    }
+  private pointerKind(pointerType: string): PointerKind {
+    return pointerType === "touch" || pointerType === "pen"
+      ? pointerType
+      : "mouse";
   }
 
   private now(): number {
-    return performance.now() / 1000;
-  }
-
-  private stageX(
-    clientX: number,
-    rect = this.canvas.getBoundingClientRect(),
-  ): number {
-    return normalizeStageX(clientX, rect.left, rect.width);
+    return performance.now() / 1_000;
   }
 }

@@ -20,6 +20,15 @@ export type ServeType =
   | "backspin-left"
   | "backspin-right";
 export type ServeLength = "short" | "middle" | "long";
+export type ControlModel = "legacy" | "direct-paddle-v1";
+export type PointerKind = "touch" | "mouse" | "pen";
+export type PaddlePhase =
+  | "idle"
+  | "tracking"
+  | "armed"
+  | "contact"
+  | "follow"
+  | "recover";
 
 export interface LevelConfig {
   name: string;
@@ -144,6 +153,71 @@ export interface Flick {
   t: number;
 }
 
+export interface PointerSample {
+  clientX: number;
+  clientY: number;
+  stageX: number;
+  stageY: number;
+  time: number;
+  pointerType: PointerKind;
+}
+
+export interface StrokeMetrics {
+  vx: number;
+  vy: number;
+  speed: number;
+  acceleration: number;
+  directionX: number;
+  directionY: number;
+  pathLength: number;
+  displacement: number;
+  curvature: number;
+  age: number;
+}
+
+export interface PaddlePose {
+  screenX: number;
+  screenY: number;
+  worldX: number;
+  worldZ: number;
+  velocityX: number;
+  velocityY: number;
+  angle: number;
+  tilt: number;
+  pointerDown: boolean;
+  phase: PaddlePhase;
+  contactFlash: number;
+}
+
+export interface ContactEvent {
+  screenX: number;
+  screenY: number;
+  contactOffsetX: number;
+  contactOffsetY: number;
+  screenQuality: number;
+  timingQuality: number;
+  contactQuality: number;
+  ballHeight: number;
+  ballVelocityBefore: BallVector;
+  paddleMetrics: StrokeMetrics;
+  time: number;
+}
+
+export interface ShotIntent {
+  power: number;
+  aimX: number;
+  depth: number;
+  lift: number;
+  topSpin: number;
+  sideSpin: number;
+  contactQuality: number;
+  timingQuality: number;
+  strokeCurvature: number;
+  classifiedShot: ShotId;
+  passive: boolean;
+  isServe: false;
+}
+
 export interface LandingResult {
   net: boolean;
   x: number;
@@ -174,6 +248,10 @@ export interface RenderScene {
   trail: readonly Pick<BallVector, "x" | "y" | "z">[];
   mark: Mark | null;
   smashable: boolean;
+  controlModel: ControlModel;
+  directPlayerPose: PaddlePose | null;
+  debugInput: boolean;
+  debugStroke: readonly Pick<PointerSample, "stageX" | "stageY">[];
 }
 
 export interface Viewport {

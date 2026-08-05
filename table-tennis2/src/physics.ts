@@ -1,4 +1,6 @@
 import {
+  ACTIVE_SIDE_CARRY,
+  ACTIVE_SPIN_CARRY,
   AZ,
   CONTACT_PLANE_FAR,
   CONTACT_PLANE_NEAR,
@@ -10,8 +12,12 @@ import {
   HW,
   MAG,
   MAGS,
+  MAX_SIDE_SPIN,
+  MAX_TOP_SPIN,
   NET_H,
   NET_HW,
+  PASSIVE_SIDE_CARRY,
+  PASSIVE_SPIN_CARRY,
   PZ,
   SHOTS,
 } from "./config.ts";
@@ -22,8 +28,17 @@ import type {
   ServeSolution,
   ShotId,
   ShotSpeed,
+  ShotIntent,
   Side,
 } from "./types.ts";
+
+function clampValue(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function lerp(first: number, second: number, ratio: number): number {
+  return first + (second - first) * ratio;
+}
 
 export function integrate(ball: BallVector, dt: number): void {
   const horizontalSpeed = Math.hypot(ball.vx, ball.vz);
@@ -442,6 +457,102 @@ export function solveShot(input: {
     spin,
     side,
   };
+}
+
+export function solveDirectPlayerShot(input: {
+  from: Pick<BallVector, "x" | "y" | "z">;
+  incoming: Pick<BallVector, "spin" | "side">;
+  intent: ShotIntent;
+  random: () => number;
+}): { vx: number; vy: number; vz: number; spin: number; side: number } | null {
+  const { from, incoming, intent, random } = input;
+  const shot = SHOTS[intent.classifiedShot];
+  const targetX = intent.aimX * (HW - 7);
+  const targetZ = lerp(24, HL - 14, intent.depth);
+  const spinCarry = intent.passive ? PASSIVE_SPIN_CARRY : ACTIVE_SPIN_CARRY;
+  const sideCarry = intent.passive ? PASSIVE_SIDE_CARRY : ACTIVE_SIDE_CARRY;
+  const spin = clampValue(
+    intent.topSpin * 1.25 + incoming.spin * spinCarry,
+    -MAX_TOP_SPIN,
+    MAX_TOP_SPIN,
+  );
+  const side = clampValue(
+    intent.sideSpin * 1.1 + incoming.side * sideCarry,
+    -MAX_SIDE_SPIN,
+    MAX_SIDE_SPIN,
+  );
+
+  let speed: number;
+  let elevation: number;
+  let azimuth: number;
+  switch (shot.speed.model) {
+    case "arc": {
+      const result = solveSpeed(
+        from,
+        targetX,
+        targetZ,
+        shot.speed.elev,
+        spin,
+        side,
+      );
+      speed = result.speed * lerp(0.95, 1.08, intent.power);
+      elevation = shot.speed.elev;
+      azimuth = result.azim;
+      break;
+    }
+    case "touch": {
+      const result = solveSpeed(
+        from,
+        targetX,
+        targetZ,
+        shot.speed.elev,
+        spin,
+        side,
+      );
+      speed = result.speed * lerp(shot.speed.margin[0], shot.speed.margin[1], intent.power);
+      elevation = shot.speed.elev;
+      azimuth = result.azim;
+      break;
+    }
+    case "absolute": {
+      speed = lerp(shot.speed.sp[0] * 0.72, shot.speed.sp[1], intent.power);
+      const result = solveAngle(
+        from,
+        targetX,
+        targetZ,
+        speed,
+        spin,
+        side,
+      );
+      elevation = result.elev;
+      azimuth = result.azim;
+      break;
+    }
+  }
+
+  if (shot.speed.model !== "arc" && intent.contactQuality > 0.3) {
+    elevation = ensureNetClear(
+      from,
+      elevation,
+      azimuth,
+      speed,
+      spin,
+      side,
+    );
+  }
+
+  const qualityLoss = 1 - intent.contactQuality;
+  const error = shot.err + qualityLoss * qualityLoss * 0.16;
+  const elevationRoll = random();
+  const azimuthRoll = random();
+  const speedRoll = random();
+  elevation += (elevationRoll * 2 - 1) * error;
+  azimuth += (azimuthRoll * 2 - 1) * error * 1.5;
+  speed *= 1 + (speedRoll * 2 - 1) * error * 1.6;
+  const solution = { ...launch(speed, elevation, azimuth), spin, side };
+  return Object.values(solution).every(Number.isFinite) && speed > 0
+    ? solution
+    : null;
 }
 
 export function predictAt(
