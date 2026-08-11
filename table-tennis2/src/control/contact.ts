@@ -2,7 +2,8 @@ import {
   BALL_R,
   CONTACT_DEPTH_BASE,
   CONTACT_DEPTH_MAX,
-  CONTACT_VISUAL_ASSIST,
+  CONTACT_ASSIST_FINE,
+  CONTACT_ASSIST_TOUCH,
   FIXED_STEP,
   PADDLE_BLADE_SCALE,
 } from "../config.ts";
@@ -10,7 +11,7 @@ import type {
   BallVector,
   ContactEvent,
   PaddlePose,
-  StrokeMetrics,
+  StrikeMetrics,
 } from "../types.ts";
 import { clamp, paddleDepthRatio, paddleScreenRadius } from "../utils.ts";
 import { createProjectionCamera, projectWorldPoint } from "../view/projection.ts";
@@ -20,7 +21,7 @@ export interface PaddleContactInput {
   currentBall: BallVector;
   previousPaddle: PaddlePose;
   currentPaddle: PaddlePose;
-  metrics: StrokeMetrics;
+  strikeMetrics: StrikeMetrics;
   width: number;
   height: number;
   time: number;
@@ -48,7 +49,7 @@ export function sweptPaddleContact(
     currentBall,
     previousPaddle,
     currentPaddle,
-    metrics,
+    strikeMetrics,
     width,
     height,
     time,
@@ -87,9 +88,15 @@ export function sweptPaddleContact(
   const squash = 1 - Math.abs(currentPaddle.tilt) * 0.15;
   const visualRx = radius * PADDLE_BLADE_SCALE;
   const visualRy = visualRx * 0.94 * squash;
+  if (!currentPaddle.pointerType) return null;
+  const assistScale = currentPaddle.pointerType === "touch"
+    ? CONTACT_ASSIST_TOUCH
+    : CONTACT_ASSIST_FINE;
+  const assistVisualRx = visualRx * assistScale;
+  const assistVisualRy = visualRy * assistScale;
   const ballRadius = Math.max(2, BALL_R * currentProjected.s);
-  const rx = visualRx * CONTACT_VISUAL_ASSIST + ballRadius;
-  const ry = visualRy * CONTACT_VISUAL_ASSIST + ballRadius;
+  const rx = assistVisualRx + ballRadius;
+  const ry = assistVisualRy + ballRadius;
   if (![rx, ry, p0.x, p0.y, p1.x, p1.y].every(Number.isFinite) || rx <= 0 || ry <= 0) {
     return null;
   }
@@ -104,12 +111,12 @@ export function sweptPaddleContact(
   const contactX = p0.x + (p1.x - p0.x) * ratio;
   const contactY = p0.y + (p1.y - p0.y) * ratio;
   const q = (contactX / rx) ** 2 + (contactY / ry) ** 2;
-  if (q > 1) return null;
+  if (q > 1 + 1e-9) return null;
 
-  const visualQ =
-    (contactX / (visualRx + ballRadius)) ** 2 +
-    (contactY / (visualRy + ballRadius)) ** 2;
-  const screenQuality = clamp(1 - Math.sqrt(visualQ), 0, 1);
+  const assistQ =
+    (contactX / assistVisualRx) ** 2 +
+    (contactY / assistVisualRy) ** 2;
+  const screenQuality = clamp(1 - Math.sqrt(assistQ), 0, 1);
   const timingQuality = clamp(1 - depthDistance / tolerance, 0, 1);
   const contactQuality = clamp(
     0.7 * screenQuality + 0.3 * timingQuality,
@@ -123,14 +130,14 @@ export function sweptPaddleContact(
     screenY:
       previousProjected.y +
       (currentProjected.y - previousProjected.y) * ratio,
-    contactOffsetX: clamp(contactX / visualRx, -1, 1),
-    contactOffsetY: clamp(contactY / visualRy, -1, 1),
+    contactOffsetX: clamp(contactX / assistVisualRx, -1, 1),
+    contactOffsetY: clamp(contactY / assistVisualRy, -1, 1),
     screenQuality,
     timingQuality,
     contactQuality,
     ballHeight: currentBall.y,
     ballVelocityBefore: { ...currentBall },
-    paddleMetrics: { ...metrics },
+    strikeMetrics: { ...strikeMetrics },
     time,
   };
 }

@@ -15,7 +15,7 @@ test("タイトルから試合を開始できる", async ({ page }) => {
   await expect(page.locator("#scA")).toHaveText("0");
 });
 
-test("v0.2.0はdirect paddleを既定としlegacyへ一時退避できる", async ({ page }) => {
+test("v0.2.1はdirect paddleを既定としlegacyへ一時退避できる", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("body")).toHaveAttribute(
     "data-control-model",
@@ -26,6 +26,125 @@ test("v0.2.0はdirect paddleを既定としlegacyへ一時退避できる", asyn
     "data-control-model",
     "legacy",
   );
+});
+
+test("33ms pointer間隔で16ms予測・6% offset・passive追従を観測できる", async ({ page, browserName }, testInfo) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/?debugInput=1");
+
+  const observed = await page.evaluate(async () => {
+    const canvas = document.querySelector("#cv");
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error("canvas missing");
+    const rect = canvas.getBoundingClientRect();
+    const dispatch = (type, init, ageMs = 0) => {
+      const event = new PointerEvent(type, {
+        bubbles: true,
+        isPrimary: true,
+        pointerType: "touch",
+        pointerId: 41,
+        buttons: type === "pointerup" ? 0 : 1,
+        ...init,
+      });
+      Object.defineProperty(event, "timeStamp", {
+        value: performance.now() - ageMs,
+      });
+      canvas.dispatchEvent(event);
+    };
+    dispatch("pointerdown", {
+      clientX: rect.left + rect.width * 0.35,
+      clientY: rect.top + rect.height * 0.8,
+    });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await new Promise((resolve) => requestAnimationFrame(() => {
+        const targetX = rect.left + rect.width * (attempt % 2 === 0 ? 0.55 : 0.45);
+        dispatch("pointermove", {
+          clientX: targetX - rect.width * 0.08,
+          clientY: rect.top + rect.height * 0.8,
+        }, 33);
+        dispatch("pointermove", {
+          clientX: targetX,
+          clientY: rect.top + rect.height * 0.8,
+        });
+        resolve();
+      }));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      if (Number(document.body.dataset.predictionMs) > 0) break;
+    }
+    const tracking = {
+      height: rect.height,
+      paddleY: Number(document.body.dataset.paddleScreenY),
+      predictionMs: Number(document.body.dataset.predictionMs),
+      predictionDistance: Number(document.body.dataset.predictionDistancePx),
+      strikeActive: document.body.dataset.strikeActive,
+      assistScale: document.body.dataset.contactAssistScale,
+    };
+    dispatch("pointerup", {
+      clientX: rect.left + rect.width * 0.55,
+      clientY: rect.top + rect.height * 0.8,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const afterRelease = {
+      phase: document.body.dataset.paddlePhase,
+      predictionMs: Number(document.body.dataset.predictionMs),
+    };
+    let verticalStrikeActive = "false";
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise((resolve) => requestAnimationFrame(() => {
+        dispatch("pointercancel", {
+          pointerId: 42,
+          clientX: rect.left + rect.width * 0.55,
+          clientY: rect.top + rect.height * 0.8,
+          buttons: 0,
+        });
+        dispatch("pointerdown", {
+          pointerId: 42,
+          clientX: rect.left + rect.width * 0.55,
+          clientY: rect.top + rect.height * 0.8,
+        }, 33);
+        dispatch("pointermove", {
+          pointerId: 42,
+          clientX: rect.left + rect.width * 0.55,
+          clientY: rect.top + rect.height * 0.64,
+        });
+        resolve();
+      }));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      verticalStrikeActive = document.body.dataset.strikeActive ?? "false";
+      if (verticalStrikeActive === "true") break;
+    }
+    dispatch("pointercancel", {
+      pointerId: 42,
+      clientX: rect.left + rect.width * 0.55,
+      clientY: rect.top + rect.height * 0.64,
+      buttons: 0,
+    });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const afterCancel = {
+      phase: document.body.dataset.paddlePhase,
+      predictionMs: Number(document.body.dataset.predictionMs),
+      assistScale: document.body.dataset.contactAssistScale,
+    };
+    return { ...tracking, afterRelease, verticalStrikeActive, afterCancel };
+  });
+
+  expect(observed.predictionMs).toBeGreaterThan(0);
+  expect(observed.predictionMs).toBeLessThanOrEqual(16);
+  expect(observed.predictionDistance).toBeGreaterThan(0);
+  expect(observed.predictionDistance).toBeLessThanOrEqual(observed.height * 0.05 + 0.1);
+  expect(Math.abs(observed.paddleY - observed.height * 0.74)).toBeLessThanOrEqual(0.5);
+  expect(observed.strikeActive).toBe("false");
+  expect(observed.assistScale).toBe("1.30");
+  expect(["recover", "idle"]).toContain(observed.afterRelease.phase);
+  expect(observed.afterRelease.predictionMs).toBe(0);
+  // WebKitの80ms wall-clock判定はworker 1のCI/stabilityで検証する。
+  // ローカル全並列ではrAF飢餓を製品失敗として扱わない。
+  if (browserName !== "webkit" || testInfo.config.workers === 1) {
+    expect(observed.verticalStrikeActive).toBe("true");
+  }
+  expect(["recover", "idle"]).toContain(observed.afterCancel.phase);
+  expect(observed.afterCancel.predictionMs).toBe(0);
+  expect(observed.afterCancel.assistScale).toBeUndefined();
 });
 
 test("難易度を変更して一時停止できる", async ({ page }) => {
@@ -297,7 +416,7 @@ test("Service Workerは他世代キャッシュの同一URLを参照しない", 
 
   const result = await page.evaluate(async () => {
     const currentName = (await caches.keys()).find(
-      (key) => key === "table-tennis2-v0.2.0",
+      (key) => key === "table-tennis2-v0.2.1",
     );
     if (!currentName) throw new Error("現行キャッシュがありません。");
     const current = await caches.open(currentName);
@@ -441,7 +560,7 @@ test("合成pointer入力でdirect paddleが実衝突して返球する", async 
         clientX: rect.left + Math.max(1, Math.min(rect.width - 1, ballX)),
         clientY:
           rect.top +
-          Math.max(1, Math.min(rect.height - 1, ballY + rect.height * 0.13)),
+          Math.max(1, Math.min(rect.height - 1, ballY + rect.height * 0.06)),
         buttons: 1,
       });
     }

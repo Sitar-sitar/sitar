@@ -625,13 +625,70 @@ export class Renderer {
       context.lineWidth = 5;
       context.stroke();
     }
+    const squash = direct ? 1 - Math.abs(direct.tilt) * 0.15 : 1;
+    const bladeAngle = direct?.angle ?? 0;
+    const assist = scene.directPaddleAssist;
+    if (direct && assist?.visible) {
+      try {
+        context.save();
+        context.translate(x, y);
+        context.rotate(bladeAngle);
+        context.beginPath();
+        context.ellipse(
+          0,
+          0,
+          radius * PADDLE_BLADE_SCALE * assist.scale,
+          radius * PADDLE_BLADE_SCALE * 0.94 * squash * assist.scale,
+          0,
+          0,
+          7,
+        );
+        context.strokeStyle = "rgba(255,255,255,.22)";
+        context.lineWidth = Math.max(1.5, radius * 0.08);
+        context.stroke();
+        context.restore();
+      } catch {
+        context.restore();
+      }
+    }
+    if (direct && scene.debugInput && assist) {
+      const visualRx = radius * PADDLE_BLADE_SCALE;
+      const visualRy = visualRx * 0.94 * squash;
+      const projectedBall = this.project(
+        scene.ball.x,
+        scene.ball.y,
+        scene.ball.z,
+      );
+      const ballRadius = Math.max(2, BALL_R * projectedBall.s);
+      context.save();
+      context.translate(x, y);
+      context.rotate(bladeAngle);
+      context.beginPath();
+      context.ellipse(0, 0, visualRx, visualRy, 0, 0, 7);
+      context.strokeStyle = "rgba(126,224,168,.72)";
+      context.lineWidth = 1.5;
+      context.stroke();
+      context.beginPath();
+      context.ellipse(
+        0,
+        0,
+        visualRx * assist.scale + ballRadius,
+        visualRy * assist.scale + ballRadius,
+        0,
+        0,
+        7,
+      );
+      context.strokeStyle = "rgba(255,138,107,.72)";
+      context.stroke();
+      context.restore();
+    }
     this.paddle(
       { x, y, s: 1 },
       radius / 9.6,
       "#cb4335",
       direct?.angle ?? paddleHandleAngle(swing, player.swingType),
       direct?.angle ?? 0,
-      direct ? 1 - Math.abs(direct.tilt) * 0.15 : 1,
+      squash,
       direct?.contactFlash ?? 0,
     );
   }

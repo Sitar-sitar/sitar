@@ -30,6 +30,7 @@ interface InputCallbacks {
 
 export class InputController {
   private activePointerId: number | null = null;
+  private activePointerKind: PointerKind | null = null;
   private down = false;
   private downAt = 0;
   private flick: Flick | null = null;
@@ -72,6 +73,7 @@ export class InputController {
       }
     }
     this.activePointerId = null;
+    this.activePointerKind = null;
     this.down = false;
     this.flick = null;
     this.samples.length = 0;
@@ -101,8 +103,9 @@ export class InputController {
     event.preventDefault();
     this.callbacks.onUserGesture();
     this.activePointerId = event.pointerId;
+    this.activePointerKind = this.pointerKind(event.pointerType);
     this.down = true;
-    this.downAt = this.now();
+    this.downAt = this.eventTime(event);
     this.flick = null;
     this.samples.length = 0;
     this.servedDuringGesture = false;
@@ -139,7 +142,7 @@ export class InputController {
     if (event.pointerId !== this.activePointerId) return;
     event.preventDefault();
     this.ingest(event);
-    const time = this.now();
+    const time = this.eventTime(event);
     if (
       this.down &&
       !this.servedDuringGesture &&
@@ -154,8 +157,8 @@ export class InputController {
 
   private readonly onPointerCancel = (event: PointerEvent): void => {
     if (event.pointerId === this.activePointerId) {
-      this.callbacks.onRelease(this.now());
       this.release(event.pointerId);
+      this.callbacks.onReset();
     }
   };
 
@@ -172,6 +175,7 @@ export class InputController {
       // The browser may have released capture during cancellation.
     }
     this.activePointerId = null;
+    this.activePointerKind = null;
     this.down = false;
     this.samples.length = 0;
     this.servedDuringGesture = false;
@@ -181,6 +185,7 @@ export class InputController {
     event: PointerEvent,
     rect = this.canvas.getBoundingClientRect(),
   ): void {
+    if (rect.width <= 0 || rect.height <= 0) return;
     let events: PointerEvent[] = [];
     try {
       events = event.getCoalescedEvents?.() ?? [];
@@ -196,7 +201,7 @@ export class InputController {
         clientY: point.clientY,
         ...normalized,
         time: this.eventTime(point),
-        pointerType: this.pointerKind(point.pointerType),
+        pointerType: this.activePointerKind ?? this.pointerKind(point.pointerType),
       };
       const appended = appendPointerSample(this.samples, sample);
       if (!appended && point !== event) continue;
@@ -227,7 +232,13 @@ export class InputController {
 
   private eventTime(event: PointerEvent): number {
     const candidate = event.timeStamp / 1_000;
-    return Number.isFinite(candidate) && candidate > 0 ? candidate : this.now();
+    const now = this.now();
+    return Number.isFinite(candidate) &&
+        candidate > 0 &&
+        Number.isFinite(now) &&
+        Math.abs(candidate - now) <= 5
+      ? candidate
+      : now;
   }
 
   private pointerKind(pointerType: string): PointerKind {

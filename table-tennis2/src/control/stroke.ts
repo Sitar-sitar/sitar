@@ -4,9 +4,14 @@ import {
   CURVE_MIN_SEGMENT,
   MAX_GESTURE_SPEED,
   MAX_POINTER_SAMPLES,
+  RELEASE_GRACE_SEC,
+  STRIKE_MIN_DISPLACEMENT,
+  STRIKE_MIN_SPEED,
+  STRIKE_MIN_VERTICALITY,
+  STRIKE_WINDOW_SEC,
   STROKE_HISTORY_SEC,
 } from "../config.ts";
-import type { PointerSample, StrokeMetrics } from "../types.ts";
+import type { PointerSample, StrikeMetrics, StrokeMetrics } from "../types.ts";
 import { clamp } from "../utils.ts";
 
 export const ZERO_STROKE_METRICS: StrokeMetrics = Object.freeze({
@@ -20,6 +25,19 @@ export const ZERO_STROKE_METRICS: StrokeMetrics = Object.freeze({
   displacement: 0,
   curvature: 0,
   age: 0,
+});
+
+export const ZERO_STRIKE_METRICS: StrikeMetrics = Object.freeze({
+  vx: 0,
+  vy: 0,
+  speed: 0,
+  displacement: 0,
+  directionX: 0,
+  directionY: 0,
+  verticality: 0,
+  curvature: 0,
+  age: 0,
+  active: false,
 });
 
 export function normalizeStagePoint(
@@ -160,4 +178,47 @@ export function computeStrokeMetrics(
   return Object.values(result).every(Number.isFinite)
     ? result
     : ZERO_STROKE_METRICS;
+}
+
+export function deriveStrikeMetrics(
+  samples: readonly PointerSample[],
+  canvasHeight: number,
+  contactTime: number,
+): StrikeMetrics {
+  if (!Number.isFinite(contactTime) || !Number.isFinite(canvasHeight)) {
+    return ZERO_STRIKE_METRICS;
+  }
+  const windowStart = contactTime - STRIKE_WINDOW_SEC;
+  const strikeSamples = samples.filter(
+    (sample) =>
+      Number.isFinite(sample.time) &&
+      sample.time >= windowStart &&
+      sample.time <= contactTime,
+  );
+  if (strikeSamples.length < 2) return ZERO_STRIKE_METRICS;
+  const metrics = computeStrokeMetrics(strikeSamples, canvasHeight, contactTime);
+  const verticality = metrics.speed > 0
+    ? Math.abs(metrics.vy) / metrics.speed
+    : 0;
+  const result: StrikeMetrics = {
+    vx: metrics.vx,
+    vy: metrics.vy,
+    speed: metrics.speed,
+    displacement: metrics.displacement,
+    directionX: metrics.directionX,
+    directionY: metrics.directionY,
+    verticality,
+    curvature: metrics.curvature,
+    age: metrics.age,
+    active:
+      metrics.speed >= STRIKE_MIN_SPEED &&
+      metrics.displacement >= STRIKE_MIN_DISPLACEMENT &&
+      verticality >= STRIKE_MIN_VERTICALITY &&
+      metrics.age <= RELEASE_GRACE_SEC,
+  };
+  return Object.values(result).every((value) =>
+    typeof value === "boolean" || Number.isFinite(value)
+  )
+    ? result
+    : ZERO_STRIKE_METRICS;
 }

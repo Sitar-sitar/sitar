@@ -1,12 +1,12 @@
 import {
   CURVE_SPIN_THRESHOLD,
-  GESTURE_MIN_SPEED,
   HL,
   LOB_MAX_Y,
   MAX_GESTURE_SPEED,
   SHOTS,
   SMASH_GESTURE_SPEED,
   SMASH_MIN_Y,
+  STRIKE_MIN_SPEED,
 } from "../config.ts";
 import { isShortBall } from "../rules.ts";
 import type {
@@ -46,17 +46,17 @@ export function buildShotIntent(
   contact: ContactEvent,
   lastBounceZ: number | null,
 ): ShotIntent {
-  const metrics = contact.paddleMetrics;
-  const passive = metrics.speed < GESTURE_MIN_SPEED;
+  const metrics = contact.strikeMetrics;
+  const passive = !metrics.active;
   const power = passive
     ? 0.12
     : clamp(
-        (metrics.speed - GESTURE_MIN_SPEED) /
-          (MAX_GESTURE_SPEED - GESTURE_MIN_SPEED),
+        (metrics.speed - STRIKE_MIN_SPEED) /
+          (MAX_GESTURE_SPEED - STRIKE_MIN_SPEED),
         0,
         1,
       );
-  const lift = clamp(-metrics.directionY, -1, 1);
+  const lift = passive ? 0 : clamp(-metrics.directionY, -1, 1);
   const short = isShortBall(lastBounceZ, contact.ballHeight, "P");
   const classifiedShot = classify(
     passive,
@@ -72,11 +72,7 @@ export function buildShotIntent(
   );
   return {
     power,
-    aimX: clamp(
-      0.72 * metrics.directionX - 0.28 * contact.contactOffsetX,
-      -1,
-      1,
-    ),
+    aimX: clamp(-0.65 * contact.contactOffsetX, -0.65, 0.65),
     depth: passive
       ? baseDepth
       : clamp(baseDepth + (power - 0.5) * 0.12, 0, 1),

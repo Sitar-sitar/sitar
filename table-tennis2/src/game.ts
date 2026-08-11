@@ -136,6 +136,7 @@ export class Game {
   private smashable = false;
   private smashCheck = 0;
   private simulationTime = 0;
+  private currentInputTime = 0;
   private serveTimer = 0;
   private serveGeneration = 0;
   private input: InputController | null = null;
@@ -242,6 +243,7 @@ export class Game {
   }
 
   public getRenderScene(): RenderScene {
+    const assistScale = this.directPaddle.getAssistScale();
     return {
       game: this.state,
       ball: this.ball,
@@ -252,6 +254,17 @@ export class Game {
       smashable: this.smashable,
       controlModel: this.controlModel,
       directPlayerPose: this.directPaddle.getRenderPose(),
+      directPaddleAssist: assistScale === null
+        ? null
+        : {
+            scale: assistScale,
+            visible:
+              this.state.phase === "rally" &&
+              this.ball.live &&
+              this.ball.vz < 0 &&
+              this.ball.bounces >= 1 &&
+              this.directPaddle.isContactEligible(this.currentInputTime),
+          },
       debugInput: this.debugInput,
       debugStroke: this.debugInput ? this.directPaddle.getDebugStroke() : [],
     };
@@ -264,10 +277,6 @@ export class Game {
       return;
     }
     this.directPaddle.applyInput(frame, this.player.z, this.player.viewZ);
-    const pose = this.directPaddle.getRenderPose();
-    if (pose) {
-      this.player.tx = pose.worldX;
-    }
   }
 
   public releasePlayerInput(time: number): void {
@@ -331,6 +340,25 @@ export class Game {
     this.lastFrame = seconds;
     const plan = planFixedSteps(this.accumulator, rawFrameDelta);
 
+    this.currentInputTime = seconds;
+    if (this.controlModel === "direct-paddle-v1") {
+      const viewport = this.renderer?.getViewport();
+      const pose = viewport
+        ? this.directPaddle.advanceFrame(
+            seconds,
+            plan.frameDelta,
+            viewport.width,
+            viewport.height,
+            this.player.z,
+            this.player.viewZ,
+          )
+        : null;
+      if (pose) {
+        this.player.x = pose.worldX;
+        this.player.tx = pose.worldX;
+      }
+    }
+
     if (this.state.phase !== "title" && !this.isSuspended()) {
       for (let step = 0; step < plan.steps; step += 1) {
         this.tick(FIXED_STEP);
@@ -347,16 +375,7 @@ export class Game {
       0,
       this.ai.state.swing - plan.frameDelta * SWING_DECAY,
     );
-    if (this.controlModel === "direct-paddle-v1") {
-      const viewport = this.renderer?.getViewport();
-      if (viewport) {
-        this.directPaddle.updateVisual(
-          plan.frameDelta,
-          viewport.width,
-          viewport.height,
-        );
-      }
-    }
+    this.syncDebugInputState();
     this.renderer?.render();
   };
 
@@ -366,8 +385,6 @@ export class Game {
       const viewport = this.renderer?.getViewport();
       this.paddleStep = viewport
         ? this.directPaddle.stepFixed(
-            dt,
-            this.simulationTime,
             viewport.width,
             viewport.height,
             this.player.z,
@@ -408,7 +425,6 @@ export class Game {
     if (this.state.phase === "rally") {
       this.ui.updateHud(this.state);
     }
-    this.syncDebugInputState();
   }
 
   private syncDebugInputState(): void {
@@ -430,6 +446,17 @@ export class Game {
       document.body.dataset.paddleScreenX = pose.screenX.toFixed(2);
       document.body.dataset.paddleScreenY = pose.screenY.toFixed(2);
       document.body.dataset.paddlePhase = pose.phase;
+    }
+    const debug = this.directPaddle.getDebugState(this.currentInputTime);
+    document.body.dataset.pointerAgeMs = String(debug.pointerAgeMs);
+    document.body.dataset.predictionMs = String(debug.predictionMs);
+    document.body.dataset.predictionDistancePx = debug.predictionDistancePx.toFixed(2);
+    document.body.dataset.strikeActive = String(debug.strikeActive);
+    document.body.dataset.strikeSpeed = debug.strikeSpeed.toFixed(3);
+    if (debug.assistScale !== null) {
+      document.body.dataset.contactAssistScale = debug.assistScale.toFixed(2);
+    } else {
+      delete document.body.dataset.contactAssistScale;
     }
   }
 
@@ -1074,7 +1101,7 @@ export class Game {
       this.state.phase !== "rally" ||
       this.lastPlayerContactFlightId === this.flightId ||
       !this.paddleStep ||
-      !this.directPaddle.isContactEligible(this.simulationTime)
+      !this.directPaddle.isContactEligible(this.currentInputTime)
     ) {
       return;
     }
@@ -1085,10 +1112,10 @@ export class Game {
       currentBall: this.ball,
       previousPaddle: this.paddleStep.previous,
       currentPaddle: this.paddleStep.current,
-      metrics: this.directPaddle.getMetrics(),
+      strikeMetrics: this.directPaddle.getStrikeMetrics(this.currentInputTime),
       width: viewport.width,
       height: viewport.height,
-      time: this.simulationTime,
+      time: this.currentInputTime,
     });
     if (!contact) return;
 
@@ -1124,7 +1151,7 @@ export class Game {
     this.player.swing = 1;
     this.player.swingType = swingTypeOf(intent.classifiedShot);
     this.state.rally += 1;
-    this.directPaddle.beginContact(this.simulationTime);
+    this.directPaddle.beginContact(this.currentInputTime);
     this.feedback.hit(
       Math.min(1, Math.hypot(solution.vx, solution.vy, solution.vz) / 1500),
     );
@@ -1150,6 +1177,7 @@ export class Game {
       document.body.dataset.sideSpinSign =
         solution.side > 0.02 ? "positive" : solution.side < -0.02 ? "negative" : "zero";
       document.body.dataset.shotPower = intent.power.toFixed(3);
+      document.body.dataset.shotAim = intent.aimX.toFixed(3);
     }
   }
 

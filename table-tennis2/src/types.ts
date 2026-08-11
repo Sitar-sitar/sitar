@@ -175,6 +175,19 @@ export interface StrokeMetrics {
   age: number;
 }
 
+export interface StrikeMetrics {
+  vx: number;
+  vy: number;
+  speed: number;
+  displacement: number;
+  directionX: number;
+  directionY: number;
+  verticality: number;
+  curvature: number;
+  age: number;
+  active: boolean;
+}
+
 export interface PaddlePose {
   screenX: number;
   screenY: number;
@@ -187,6 +200,7 @@ export interface PaddlePose {
   pointerDown: boolean;
   phase: PaddlePhase;
   contactFlash: number;
+  pointerType: PointerKind | null;
 }
 
 export interface ContactEvent {
@@ -199,7 +213,7 @@ export interface ContactEvent {
   contactQuality: number;
   ballHeight: number;
   ballVelocityBefore: BallVector;
-  paddleMetrics: StrokeMetrics;
+  strikeMetrics: StrikeMetrics;
   time: number;
 }
 
@@ -250,6 +264,7 @@ export interface RenderScene {
   smashable: boolean;
   controlModel: ControlModel;
   directPlayerPose: PaddlePose | null;
+  directPaddleAssist: { visible: boolean; scale: number } | null;
   debugInput: boolean;
   debugStroke: readonly Pick<PointerSample, "stageX" | "stageY">[];
 }

@@ -116,11 +116,34 @@ for (const sourcePath of [
   "src/view/layout.ts",
   "src/view/orientation.ts",
   "src/view/suspension.ts",
+  "src/control/stroke.ts",
+  "src/control/paddle.ts",
+  "src/control/contact.ts",
+  "src/control/shot-intent.ts",
   "src/ui/feature.ts",
   "src/ui/features/match-context.ts",
   "src/ui/features/serve-panel.ts",
 ]) {
   await access(resolve(root, sourcePath));
+}
+
+for (const [name, expected] of [
+  ["POINTER_OFFSET_TOUCH", "0.06"],
+  ["POINTER_PREDICTION_MAX_SEC", "0.016"],
+  ["RELEASE_GRACE_SEC", "0.16"],
+  ["STRIKE_WINDOW_SEC", "0.08"],
+  ["STRIKE_MIN_SPEED", "1.1"],
+  ["STRIKE_MIN_DISPLACEMENT", "0.04"],
+  ["STRIKE_MIN_VERTICALITY", "0.55"],
+  ["CONTACT_ASSIST_TOUCH", "1.3"],
+  ["CONTACT_ASSIST_FINE", "1.15"],
+]) {
+  if (!new RegExp(`export const ${name} = ${expected.replace(".", "\\.")};`, "u").test(configSource)) {
+    fail(`src/config.ts の ${name} をv0.2.1設計値 ${expected} に合わせてください。`);
+  }
+}
+if (configSource.includes("CONTACT_VISUAL_ASSIST")) {
+  fail("一律CONTACT_VISUAL_ASSISTをpointer別assistへ置き換えてください。");
 }
 
 const renderSource = await read("src/render.ts");
@@ -141,6 +164,18 @@ if (/project\([^)]*viewZ/u.test(drawPlayerPaddle)) {
 }
 
 const gameSource = await read("src/game.ts");
+if (!gameSource.includes("this.directPaddle.advanceFrame(")) {
+  fail("Game loopはfixed step前にdirect paddleのadvanceFrame()を呼んでください。");
+}
+if (
+  gameSource.indexOf("this.directPaddle.advanceFrame(")
+  > gameSource.indexOf("for (let step = 0; step < plan.steps; step += 1)")
+) {
+  fail("Game loopはadvanceFrame()の後にfixed stepを実行してください。");
+}
+if (!gameSource.includes("this.currentInputTime")) {
+  fail("direct contact期限はwall clockのcurrentInputTimeを使ってください。");
+}
 const startServe = /private startServe\(\): void \{[\s\S]*?\n {2}\}/u.exec(
   gameSource,
 )?.[0];

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { buildShotIntent } from "../src/control/shot-intent.ts";
 import { onTable, simLand, solveDirectPlayerShot } from "../src/physics.ts";
-import type { ShotId, ShotIntent } from "../src/types.ts";
+import type { ContactEvent, ShotId, StrikeMetrics } from "../src/types.ts";
 
 function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -13,27 +14,44 @@ function seededRandom(seed: number): () => number {
 }
 
 const cases = [
-  { x: -45, z: -160, y: 8, smashY: 30, aimX: -0.8 },
-  { x: 0, z: -100, y: 30, smashY: 52, aimX: 0 },
-  { x: 45, z: -45, y: 52, smashY: 74, aimX: 0.8 },
+  { x: -45, z: -100, y: 22, smashY: 30, aimX: -0.4 },
+  { x: 0, z: -100, y: 22, smashY: 52, aimX: 0 },
+  { x: 45, z: -100, y: 22, smashY: 74, aimX: 0.4 },
 ] as const;
 
-function intent(type: ShotId, quality: number, aimX: number, sideSpin = 0): ShotIntent {
-  const topSpin = type === "CHOP" ? -0.75 : type === "PUSH" ? 0 : 0.7;
-  return {
-    power: type === "SMASH" ? 0.9 : 0.72,
-    aimX,
-    depth: type === "PUSH" ? 0.62 : 0.78,
-    lift: topSpin,
-    topSpin,
-    sideSpin,
-    contactQuality: quality,
-    timingQuality: quality,
-    strokeCurvature: sideSpin,
-    classifiedShot: type,
-    passive: type === "PUSH",
-    isServe: false,
+function intent(type: ShotId, quality: number, aimX: number, curvature = 0) {
+  const active = type !== "PUSH";
+  const upward = type !== "CHOP";
+  const speed = type === "SMASH" ? 3.35 : 2.5;
+  const strikeMetrics: StrikeMetrics = {
+    vx: 0,
+    vy: active ? (upward ? -speed : speed) : 0,
+    speed: active ? speed : 0,
+    displacement: active ? 0.08 : 0,
+    directionX: 0,
+    directionY: active ? (upward ? -1 : 1) : 0,
+    verticality: active ? 1 : 0,
+    curvature,
+    age: 0,
+    active,
   };
+  const ballHeight = type === "SMASH" ? 52 : 30;
+  const contact: ContactEvent = {
+    screenX: 0,
+    screenY: 0,
+    contactOffsetX: -aimX / 0.65,
+    contactOffsetY: 0,
+    screenQuality: quality,
+    timingQuality: quality,
+    contactQuality: quality,
+    ballHeight,
+    ballVelocityBefore: { x: 0, y: ballHeight, z: -100, vx: 0, vy: 0, vz: -500, spin: 0.2, side: -0.1 },
+    strikeMetrics,
+    time: 1,
+  };
+  const built = buildShotIntent(contact, -80);
+  assert.equal(built.classifiedShot, type);
+  return built;
 }
 
 function cohort(type: ShotId, quality: number, seed: number): { total: number; landed: number } {
@@ -62,7 +80,7 @@ function cohort(type: ShotId, quality: number, seed: number): { total: number; l
   return { total, landed };
 }
 
-test("v0.2.0 fixed population: 品質別の台内率とミス率をseed 20260805で校正する", () => {
+test("v0.2.1 fixed population: 製品intent経路の品質別台内率とミス率をseed 20260805で校正する", () => {
   const results: Record<string, { highRate: number; missGap: number }> = {};
   for (const type of ["DRIVE", "CHOP", "PUSH", "SMASH"] as const) {
     const high = cohort(type, 0.85, 20260805);
@@ -82,7 +100,7 @@ test("v0.2.0 fixed population: 品質別の台内率とミス率をseed 20260805
   );
 });
 
-test("v0.2.0 fixed population: side spin正負の平均着地点Xが0をまたぐ", () => {
+test("v0.2.1 fixed population: 製品intent経路のside spin正負平均着地点Xが0をまたぐ", () => {
   const means: number[] = [];
   for (const sideSpin of [-0.8, 0.8]) {
     const random = seededRandom(20260805);
