@@ -362,8 +362,8 @@ if ("serviceWorker" in navigator) {
     throw new Error("Service Worker登録先が設定されていません。");
   }
   window.addEventListener("load", () => {
-    void navigator.serviceWorker
-      .register(serviceWorkerPath)
-      .catch(() => undefined);
+    void navigator.serviceWorker.register(serviceWorkerPath).catch((error: unknown) => {
+      console.warn("Service Worker の登録に失敗しました。", error);
+    });
   });
 }

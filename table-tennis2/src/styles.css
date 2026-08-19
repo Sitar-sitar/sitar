@@ -397,6 +397,30 @@ body[data-phase="serve"][data-server="P"] .play-status {
   line-height: 1.2;
 }
 
+@media (min-width: 568px) and (max-width: 759px) and (max-height: 360px) and (orientation: landscape) {
+  body[data-phase="serve"][data-server="P"] .app-rail--right {
+    gap: 2px;
+    padding-block: 2px;
+  }
+
+  body[data-phase="serve"][data-server="P"] .app-rail--right .serve-controls {
+    padding-block: 3px;
+  }
+
+  body[data-phase="serve"][data-server="P"] .app-rail--right .serve-controls__label {
+    margin-bottom: 2px;
+  }
+
+  body[data-phase="serve"][data-server="P"] .app-rail--right .serve-controls__grid,
+  body[data-phase="serve"][data-server="P"] .app-rail--right .serve-controls__lengths {
+    gap: 4px;
+  }
+
+  body[data-phase="serve"][data-server="P"] .app-rail--right .serve-controls__lengths {
+    margin-top: 4px;
+  }
+}
+
 .serve-controls {
   position: fixed;
   z-index: 4;
