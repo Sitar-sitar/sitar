@@ -1,5 +1,54 @@
 import { expect, test } from "@playwright/test";
 
+async function expectServeControlsWithinRightRail(page) {
+  const layout = await page.evaluate(() => {
+    const controls = document.querySelector("#serveControls");
+    const rightRail = document.querySelector("#rightRail");
+    if (!(controls instanceof HTMLElement) || !(rightRail instanceof HTMLElement)) {
+      throw new Error("サーブ操作または右レールが見つかりません。");
+    }
+    const panel = controls.getBoundingClientRect();
+    const rail = rightRail.getBoundingClientRect();
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      panel: {
+        x: panel.x,
+        y: panel.y,
+        right: panel.right,
+        bottom: panel.bottom,
+      },
+      rail: {
+        x: rail.x,
+        y: rail.y,
+        right: rail.right,
+        bottom: rail.bottom,
+      },
+    };
+  });
+  const safeBottom = Math.min(layout.viewport.height, layout.rail.bottom) - 2;
+
+  expect(layout.panel.x).toBeGreaterThanOrEqual(layout.rail.x);
+  expect(layout.panel.right).toBeLessThanOrEqual(layout.rail.right);
+  expect(layout.panel.y).toBeGreaterThanOrEqual(Math.max(0, layout.rail.y));
+  expect(layout.panel.bottom).toBeLessThanOrEqual(safeBottom);
+
+  const buttons = page.locator(
+    "#gear, [data-serve-type], [data-serve-length]",
+  );
+  await expect(buttons).toHaveCount(13);
+  for (const button of await buttons.all()) {
+    await expect(button).toBeVisible();
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box.x).toBeGreaterThanOrEqual(layout.rail.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(layout.rail.right);
+    expect(box.y).toBeGreaterThanOrEqual(Math.max(0, layout.rail.y));
+    expect(box.y + box.height).toBeLessThanOrEqual(safeBottom);
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+}
+
 test("タイトルから試合を開始できる", async ({ page }) => {
   await page.goto("/");
 
@@ -15,7 +64,7 @@ test("タイトルから試合を開始できる", async ({ page }) => {
   await expect(page.locator("#scA")).toHaveText("0");
 });
 
-test("v0.2.1はdirect paddleを既定としlegacyへ一時退避できる", async ({ page }) => {
+test("v0.2.2はdirect paddleを既定としlegacyへ一時退避できる", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("body")).toHaveAttribute(
     "data-control-model",
@@ -274,7 +323,25 @@ test("568×320でも両得点とサーブ操作を画面内に保つ", async ({ 
   }
   expect(boxes["#gear"].width).toBeGreaterThanOrEqual(44);
   expect(boxes["#gear"].height).toBeGreaterThanOrEqual(44);
-  expect(boxes["#serveControls"].bottom).toBeLessThanOrEqual(320);
+  await expectServeControlsWithinRightRail(page);
+});
+
+test("759×360ではcompact配置を維持し、760×360でleft railへ切り替える", async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+
+  for (const [width, leftRailVisible] of [[759, false], [760, true]]) {
+    await page.setViewportSize({ width, height: 360 });
+    await page.goto("/");
+    await page.locator("#start").click();
+    if (leftRailVisible) {
+      await expect(page.locator("#leftRail")).toBeVisible();
+    } else {
+      await expect(page.locator("#leftRail")).toBeHidden();
+    }
+    await expectServeControlsWithinRightRail(page);
+  }
 });
 
 test("HUDから音と振動を切り替え一時停止表示と同期する", async ({ page }) => {
@@ -304,6 +371,12 @@ test("PWA登録とオフライン用キャッシュを確認できる", async ({
   context,
   page,
 }) => {
+  const consoleFailures = [];
+  page.on("console", (message) => {
+    if (["warning", "error"].includes(message.type())) {
+      consoleFailures.push(message.text());
+    }
+  });
   await page.goto("/");
 
   const scriptUrl = await page.evaluate(async () => {
@@ -349,6 +422,54 @@ test("PWA登録とオフライン用キャッシュを確認できる", async ({
   await expect(page).toHaveTitle("卓球 横画面");
   await expect(page.locator("#playerName")).toHaveText("ゲスト");
   await expect(page.locator("#openStats")).toBeEnabled();
+  expect(consoleFailures).toEqual([]);
+});
+
+test("Service Worker登録失敗を警告しゲームを継続する", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+  await page.addInitScript(() => {
+    const originalWarn = console.warn.bind(console);
+    window.__serviceWorkerWarningArgs = [];
+    window.__unhandledRejections = [];
+    console.warn = (...args) => {
+      window.__serviceWorkerWarningArgs.push(
+        args.map((argument) => argument instanceof Error
+          ? { name: argument.name, message: argument.message }
+          : argument),
+      );
+      originalWarn(...args);
+    };
+    window.addEventListener("unhandledrejection", (event) => {
+      window.__unhandledRejections.push(
+        event.reason instanceof Error ? event.reason.message : String(event.reason),
+      );
+    });
+    Object.defineProperty(ServiceWorkerContainer.prototype, "register", {
+      configurable: true,
+      writable: true,
+      value: () => Promise.reject(new Error("TEST_SW_REGISTER_FAILED")),
+    });
+  });
+
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(
+    () => window.__serviceWorkerWarningArgs.length,
+  )).toBe(1);
+  await expect(page.locator("#title")).toHaveClass(/show/u);
+  await page.locator("#start").click();
+  await expect(page.locator("#board")).toBeVisible();
+
+  expect(await page.evaluate(() => window.__serviceWorkerWarningArgs)).toEqual([
+    ["Service Worker の登録に失敗しました。", {
+      name: "Error",
+      message: "TEST_SW_REGISTER_FAILED",
+    }],
+  ]);
+  expect(await page.evaluate(() => window.__unhandledRejections)).toEqual([]);
+  expect(pageErrors).toEqual([]);
 });
 
 test("9種類のサーブを3×3で選択して実行できる", async ({ page }) => {
@@ -416,7 +537,7 @@ test("Service Workerは他世代キャッシュの同一URLを参照しない", 
 
   const result = await page.evaluate(async () => {
     const currentName = (await caches.keys()).find(
-      (key) => key === "table-tennis2-v0.2.1",
+      (key) => key === "table-tennis2-v0.2.2",
     );
     if (!currentName) throw new Error("現行キャッシュがありません。");
     const current = await caches.open(currentName);
@@ -633,27 +754,5 @@ test("縦画面を停止し横画面へ戻すと操作できる", async ({ page 
 
   const controls = page.locator("#serveControls");
   await expect(controls).toBeVisible();
-  const box = await controls.boundingBox();
-  expect(box).not.toBeNull();
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(568);
-  expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.y + box.height).toBeLessThanOrEqual(320);
-
-  const typeButtons = page.locator("[data-serve-type]");
-  await expect(typeButtons).toHaveCount(9);
-  const lengthButtons = page.locator("[data-serve-length]");
-  await expect(lengthButtons).toHaveCount(3);
-  for (const button of await typeButtons.all()) {
-    await expect(button).toBeVisible();
-    const buttonBox = await button.boundingBox();
-    expect(buttonBox.width).toBeGreaterThanOrEqual(44);
-    expect(buttonBox.height).toBeGreaterThanOrEqual(44);
-  }
-  for (const button of await lengthButtons.all()) {
-    await expect(button).toBeVisible();
-    const buttonBox = await button.boundingBox();
-    expect(buttonBox.width).toBeGreaterThanOrEqual(44);
-    expect(buttonBox.height).toBeGreaterThanOrEqual(44);
-  }
+  await expectServeControlsWithinRightRail(page);
 });

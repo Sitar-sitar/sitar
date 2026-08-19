@@ -5,6 +5,24 @@ import test from "node:test";
 
 const root = resolve(import.meta.dirname, "..");
 
+function parseSemver(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(version);
+  if (!match) {
+    throw new Error(`semver形式ではありません: ${version}`);
+  }
+  return match.slice(1).map(Number);
+}
+
+function isAtLeast(version, minimum) {
+  const actual = parseSemver(version);
+  const required = parseSemver(minimum);
+  return actual.every((value, index) =>
+    actual.slice(0, index).every((prior, priorIndex) => prior === required[priorIndex])
+      ? value >= required[index]
+      : true,
+  );
+}
+
 test("PWAの必須ファイルが存在する", async () => {
   await Promise.all(
     [
@@ -35,6 +53,26 @@ test("マニフェストはstandaloneアプリとして構成されている", a
   assert.ok(manifest.icons.some((icon) => icon.sizes === "192x192"));
   assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512"));
   assert.ok(manifest.icons.some((icon) => icon.purpose === "maskable"));
+});
+
+test("lockfileは既知脆弱性の修正版下限を満たす", async () => {
+  const lockfile = JSON.parse(
+    await readFile(resolve(root, "package-lock.json"), "utf8"),
+  );
+  const requirements = [
+    ["node_modules/brace-expansion", 5, "5.0.9"],
+    ["node_modules/nanoid", 3, "3.3.18"],
+  ];
+
+  for (const [path, expectedMajor, minimum] of requirements) {
+    const entry = lockfile.packages[path];
+    assert.ok(entry, `${path} がlockfileに存在する`);
+    assert.equal(parseSemver(entry.version)[0], expectedMajor);
+    assert.ok(
+      isAtLeast(entry.version, minimum),
+      `${path} は ${minimum} 以上である`,
+    );
+  }
 });
 
 test("Service Workerはアプリシェルをキャッシュする", async () => {
