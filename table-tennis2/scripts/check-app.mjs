@@ -120,6 +120,7 @@ for (const sourcePath of [
   "src/control/paddle.ts",
   "src/control/contact.ts",
   "src/control/shot-intent.ts",
+  "src/render-guide.ts",
   "src/ui/feature.ts",
   "src/ui/features/match-context.ts",
   "src/ui/features/serve-panel.ts",
@@ -130,17 +131,24 @@ for (const sourcePath of [
 for (const [name, expected] of [
   ["POINTER_OFFSET_TOUCH", "0.06"],
   ["POINTER_PREDICTION_MAX_SEC", "0.016"],
-  ["RELEASE_GRACE_SEC", "0.16"],
+  ["STRIKE_ACTIVE_MAX_AGE_SEC", "0.16"],
+  ["CONTACT_RELEASE_GRACE_TOUCH_SEC", "0.35"],
+  ["CONTACT_RELEASE_GRACE_FINE_SEC", "0.22"],
   ["STRIKE_WINDOW_SEC", "0.08"],
   ["STRIKE_MIN_SPEED", "1.1"],
   ["STRIKE_MIN_DISPLACEMENT", "0.04"],
   ["STRIKE_MIN_VERTICALITY", "0.55"],
-  ["CONTACT_ASSIST_TOUCH", "1.3"],
-  ["CONTACT_ASSIST_FINE", "1.15"],
+  ["CONTACT_ASSIST_TOUCH", "1.4"],
+  ["CONTACT_ASSIST_FINE", "1.2"],
+  ["ASSIST_CONTACT_QUALITY_FLOOR", "0.4"],
+  ["PADDLE_SCREEN_Y_MIN", "0.35"],
 ]) {
   if (!new RegExp(`export const ${name} = ${expected.replace(".", "\\.")};`, "u").test(configSource)) {
-    fail(`src/config.ts の ${name} をv0.2.1設計値 ${expected} に合わせてください。`);
+    fail(`src/config.ts の ${name} をv0.2.3設計値 ${expected} に合わせてください。`);
   }
+}
+if (configSource.includes("RELEASE_GRACE_SEC")) {
+  fail("共用RELEASE_GRACE_SECを用途別のv0.2.3定数へ置き換えてください。");
 }
 if (configSource.includes("CONTACT_VISUAL_ASSIST")) {
   fail("一律CONTACT_VISUAL_ASSISTをpointer別assistへ置き換えてください。");

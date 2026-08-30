@@ -64,7 +64,7 @@ test("タイトルから試合を開始できる", async ({ page }) => {
   await expect(page.locator("#scA")).toHaveText("0");
 });
 
-test("v0.2.2はdirect paddleを既定としlegacyへ一時退避できる", async ({ page }) => {
+test("v0.2.3はdirect paddleを既定としlegacyへ一時退避できる", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("body")).toHaveAttribute(
     "data-control-model",
@@ -131,11 +131,13 @@ test("33ms pointer間隔で16ms予測・6% offset・passive追従を観測でき
       clientX: rect.left + rect.width * 0.55,
       clientY: rect.top + rect.height * 0.8,
     });
-    await new Promise((resolve) => setTimeout(resolve, 180));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const afterRelease = {
       phase: document.body.dataset.paddlePhase,
       predictionMs: Number(document.body.dataset.predictionMs),
+      strikeActive: document.body.dataset.strikeActive,
+      contactGraceMs: Number(document.body.dataset.contactGraceMs),
     };
     let verticalStrikeActive = "false";
     for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -183,9 +185,11 @@ test("33ms pointer間隔で16ms予測・6% offset・passive追従を観測でき
   expect(observed.predictionDistance).toBeLessThanOrEqual(observed.height * 0.05 + 0.1);
   expect(Math.abs(observed.paddleY - observed.height * 0.74)).toBeLessThanOrEqual(0.5);
   expect(observed.strikeActive).toBe("false");
-  expect(observed.assistScale).toBe("1.30");
-  expect(["recover", "idle"]).toContain(observed.afterRelease.phase);
+  expect(observed.assistScale).toBe("1.40");
+  expect(observed.afterRelease.phase).toBe("follow");
   expect(observed.afterRelease.predictionMs).toBe(0);
+  expect(observed.afterRelease.strikeActive).toBe("false");
+  expect(observed.afterRelease.contactGraceMs).toBeGreaterThan(0);
   // Linux WebKitはworker 1でもrAFが80msを越えることがあるため、瞬間値の
   // active断面はChromiumで固定する。WebKitは本suiteの実衝突とresetを検証する。
   if (browserName !== "webkit") {
@@ -537,7 +541,7 @@ test("Service Workerは他世代キャッシュの同一URLを参照しない", 
 
   const result = await page.evaluate(async () => {
     const currentName = (await caches.keys()).find(
-      (key) => key === "table-tennis2-v0.2.2",
+      (key) => key === "table-tennis2-v0.2.3",
     );
     if (!currentName) throw new Error("現行キャッシュがありません。");
     const current = await caches.open(currentName);
@@ -647,7 +651,7 @@ test("合成pointer入力でdirect paddleが実衝突して返球する", async 
     { timeout: 3000 },
   );
 
-  await page.evaluate(async () => {
+  const observed = await page.evaluate(async () => {
     const canvas = document.querySelector("#cv");
     if (!(canvas instanceof HTMLCanvasElement)) {
       throw new Error("E14に必要なDOMが見つかりません。");
@@ -663,6 +667,7 @@ test("合成pointer入力でdirect paddleが実衝突して返球する", async 
       );
     };
     const pointerId = 1;
+    let sawGuide = false;
     const firstRect = canvas.getBoundingClientRect();
     dispatch("pointerdown", {
       pointerId,
@@ -672,6 +677,11 @@ test("合成pointer入力でdirect paddleが実衝突して返球する", async 
     });
     for (let frame = 0; frame < 360 && !document.body.dataset.directShot; frame += 1) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
+      sawGuide ||= [
+        document.body.dataset.predictedContactX,
+        document.body.dataset.predictedContactY,
+        document.body.dataset.predictedContactRemainingMs,
+      ].every((value) => Number.isFinite(Number(value)));
       const rect = canvas.getBoundingClientRect();
       const ballX = Number(document.body.dataset.ballScreenX);
       const ballY = Number(document.body.dataset.ballScreenY);
@@ -691,12 +701,94 @@ test("合成pointer入力でdirect paddleが実衝突して返球する", async 
       clientY: firstRect.top + firstRect.height * 0.72,
       buttons: 0,
     });
+    return {
+      sawGuide,
+      predictedContactX: document.body.dataset.predictedContactX,
+      predictedContactY: document.body.dataset.predictedContactY,
+      screenQuality: Number(document.body.dataset.screenQuality),
+      timingQuality: Number(document.body.dataset.timingQuality),
+      contactQuality: Number(document.body.dataset.contactQuality),
+    };
   });
 
   await expect(page.locator("body")).toHaveAttribute(
     "data-direct-shot",
     /DRIVE|SMASH|PUSH|CHOP|LOB|STOP|FLICK/u,
   );
+  expect(observed.sawGuide).toBe(true);
+  expect(observed.predictedContactX).toBeUndefined();
+  expect(observed.predictedContactY).toBeUndefined();
+  expect(observed.screenQuality).toBeGreaterThanOrEqual(0);
+  expect(observed.timingQuality).toBeGreaterThanOrEqual(0);
+  expect(observed.contactQuality).toBeGreaterThanOrEqual(0.4);
+});
+
+test("touch release後160ms超の迎球はpassive PUSHになりguideを消費する", async ({ page }) => {
+  await page.addInitScript(() => {
+    const values = [0.6, 0, 0, 0.5, 0.5, 0.5, 0.5];
+    let index = 0;
+    Math.random = () => values[index++] ?? 0.5;
+  });
+  await page.goto("/?debugInput=1");
+  await page.locator("#start").click();
+  await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+
+  const releaseMinMs = 160;
+  const observed = await page.evaluate(async (releaseMin) => {
+    const canvas = document.querySelector("#cv");
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error("canvas missing");
+    let releasedWithMs = 0;
+    let firstGuideMs = 0;
+    await new Promise((resolve) => {
+      const timeout = window.setTimeout(resolve, 8_000);
+      const observer = new MutationObserver(() => {
+        const remaining = Number(document.body.dataset.predictedContactRemainingMs);
+        if (Number.isFinite(remaining) && remaining > 0 && firstGuideMs === 0) {
+          firstGuideMs = remaining;
+        }
+        if (!Number.isFinite(remaining) || remaining < releaseMin || remaining > 300) return;
+        const guideX = Number(document.body.dataset.predictedContactX);
+        const guideY = Number(document.body.dataset.predictedContactY);
+        if (!Number.isFinite(guideX) || !Number.isFinite(guideY)) return;
+        const rect = canvas.getBoundingClientRect();
+        const common = {
+          bubbles: true,
+          isPrimary: true,
+          pointerType: "touch",
+          pointerId: 77,
+          clientX: rect.left + guideX,
+          clientY: rect.top + guideY + rect.height * 0.06,
+        };
+        canvas.dispatchEvent(new PointerEvent("pointerdown", { ...common, buttons: 1 }));
+        canvas.dispatchEvent(new PointerEvent("pointerup", { ...common, buttons: 0 }));
+        releasedWithMs = remaining;
+        observer.disconnect();
+        window.clearTimeout(timeout);
+        resolve();
+      });
+      observer.observe(document.body, { attributes: true });
+    });
+    for (let frame = 0; frame < 240 && !document.body.dataset.directShot; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return {
+      releasedWithMs,
+      firstGuideMs,
+      directShot: document.body.dataset.directShot,
+      guideX: document.body.dataset.predictedContactX,
+      guideY: document.body.dataset.predictedContactY,
+      contactGraceMs: Number(document.body.dataset.contactGraceMs),
+      contactQuality: Number(document.body.dataset.contactQuality),
+    };
+  }, releaseMinMs);
+
+  expect(observed.releasedWithMs, JSON.stringify(observed)).toBeGreaterThanOrEqual(releaseMinMs);
+  expect(observed.releasedWithMs).toBeLessThanOrEqual(300);
+  expect(observed.directShot).toBe("PUSH");
+  expect(observed.guideX).toBeUndefined();
+  expect(observed.guideY).toBeUndefined();
+  expect(observed.contactGraceMs).toBe(0);
+  expect(observed.contactQuality).toBeGreaterThanOrEqual(0.4);
 });
 
 test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始まる", async ({

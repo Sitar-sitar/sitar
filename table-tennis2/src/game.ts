@@ -58,6 +58,7 @@ import {
 import type {
   BallState,
   BallVector,
+  ContactEvent,
   ControlModel,
   Flick,
   GameState,
@@ -66,6 +67,7 @@ import type {
   MatchResult,
   PaddleState,
   PlayerRecord,
+  PlayerContactGuide,
   RenderScene,
   ResolvedServe,
   ServeLength,
@@ -133,6 +135,11 @@ export class Game {
   private readonly ai: OpponentAi;
   private readonly trail: Pick<BallVector, "x" | "y" | "z">[] = [];
   private mark: Mark | null = null;
+  private playerContactGuide: PlayerContactGuide | null = null;
+  private lastDirectContactQuality: Pick<
+    ContactEvent,
+    "screenQuality" | "timingQuality" | "contactQuality"
+  > | null = null;
   private smashable = false;
   private smashCheck = 0;
   private simulationTime = 0;
@@ -251,6 +258,10 @@ export class Game {
       opponent: this.ai.state,
       trail: this.trail,
       mark: this.mark,
+      simulationTime: this.simulationTime,
+      playerContactGuide: this.playerContactGuide
+        ? { ...this.playerContactGuide }
+        : null,
       smashable: this.smashable,
       controlModel: this.controlModel,
       directPlayerPose: this.directPaddle.getRenderPose(),
@@ -288,6 +299,7 @@ export class Game {
   public resetPlayerInput(): void {
     this.directPaddle.reset();
     this.paddleStep = null;
+    this.lastDirectContactQuality = null;
   }
 
   public updatePlayerTarget(stageX: number): void {
@@ -446,6 +458,14 @@ export class Game {
       document.body.dataset.paddleScreenX = pose.screenX.toFixed(2);
       document.body.dataset.paddleScreenY = pose.screenY.toFixed(2);
       document.body.dataset.paddlePhase = pose.phase;
+      document.body.dataset.paddleAngle = pose.angle.toFixed(3);
+      document.body.dataset.paddleTilt = pose.tilt.toFixed(3);
+    } else {
+      delete document.body.dataset.paddleScreenX;
+      delete document.body.dataset.paddleScreenY;
+      delete document.body.dataset.paddlePhase;
+      delete document.body.dataset.paddleAngle;
+      delete document.body.dataset.paddleTilt;
     }
     const debug = this.directPaddle.getDebugState(this.currentInputTime);
     document.body.dataset.pointerAgeMs = String(debug.pointerAgeMs);
@@ -453,10 +473,45 @@ export class Game {
     document.body.dataset.predictionDistancePx = debug.predictionDistancePx.toFixed(2);
     document.body.dataset.strikeActive = String(debug.strikeActive);
     document.body.dataset.strikeSpeed = debug.strikeSpeed.toFixed(3);
+    document.body.dataset.contactGraceMs = String(debug.contactGraceMs);
     if (debug.assistScale !== null) {
       document.body.dataset.contactAssistScale = debug.assistScale.toFixed(2);
     } else {
       delete document.body.dataset.contactAssistScale;
+    }
+    if (this.lastDirectContactQuality) {
+      document.body.dataset.screenQuality =
+        this.lastDirectContactQuality.screenQuality.toFixed(3);
+      document.body.dataset.timingQuality =
+        this.lastDirectContactQuality.timingQuality.toFixed(3);
+      document.body.dataset.contactQuality =
+        this.lastDirectContactQuality.contactQuality.toFixed(3);
+    } else {
+      delete document.body.dataset.screenQuality;
+      delete document.body.dataset.timingQuality;
+      delete document.body.dataset.contactQuality;
+    }
+
+    const guide = this.visiblePlayerContactGuide();
+    const remaining = guide
+      ? guide.etaSec - (this.simulationTime - guide.plannedAt)
+      : 0;
+    if (guide && remaining > 0) {
+      const contactPoint = projectWorldPoint(
+        createProjectionCamera(viewport.width, viewport.height),
+        guide.x,
+        guide.y,
+        guide.z,
+      );
+      document.body.dataset.predictedContactX = contactPoint.x.toFixed(2);
+      document.body.dataset.predictedContactY = contactPoint.y.toFixed(2);
+      document.body.dataset.predictedContactRemainingMs = String(
+        Math.max(0, Math.round(remaining * 1_000)),
+      );
+    } else {
+      delete document.body.dataset.predictedContactX;
+      delete document.body.dataset.predictedContactY;
+      delete document.body.dataset.predictedContactRemainingMs;
     }
   }
 
@@ -557,6 +612,8 @@ export class Game {
     this.suspension.userPaused = false;
     this.state.phase = "title";
     this.ball.live = false;
+    this.playerContactGuide = null;
+    this.lastDirectContactQuality = null;
     this.input?.reset();
     this.ui.showTitle();
     this.ui.hint([]);
@@ -578,6 +635,8 @@ export class Game {
     this.ball.live = false;
     this.trail.length = 0;
     this.mark = null;
+    this.playerContactGuide = null;
+    this.lastDirectContactQuality = null;
     this.smashable = false;
     const playerServes = this.state.server === "P";
     this.ball.x = playerServes
@@ -791,6 +850,8 @@ export class Game {
     this.ball.bounces = 0;
     this.ball.serveStage = 1;
     this.ball.live = true;
+    this.playerContactGuide = null;
+    this.lastDirectContactQuality = null;
     this.flightId += 1;
     this.trail.length = 0;
     this.state.phase = "rally";
@@ -862,6 +923,8 @@ export class Game {
     this.ball.live = true;
     this.ball.serveStage = 0;
     this.ball.lastBounceZ = null;
+    this.playerContactGuide = null;
+    this.lastDirectContactQuality = null;
     this.flightId += 1;
     this.trail.length = 0;
     this.feedback.hit(
@@ -962,6 +1025,7 @@ export class Game {
         tableBounce(this.ball);
         this.feedback.bounce();
         this.judgeBounce();
+        this.planPlayerContactGuideIfNeeded();
       } else {
         const miss = resolveMiss(
           this.ball.bounces,
@@ -1056,6 +1120,47 @@ export class Game {
     this.point(this.ball.hitter, "返せず");
   }
 
+  private planPlayerContactGuideIfNeeded(): void {
+    if (
+      this.controlModel !== "direct-paddle-v1" ||
+      this.state.phase !== "rally" ||
+      !this.ball.live ||
+      this.ball.hitter !== "A" ||
+      this.ball.bounces !== 1 ||
+      this.ball.z >= 0 ||
+      this.ball.vz >= 0 ||
+      this.playerContactGuide
+    ) {
+      return;
+    }
+    const prediction = predictAt(this.ball, this.player.z, -1, FLOOR);
+    if (
+      !prediction ||
+      ![prediction.x, prediction.y, prediction.t].every(Number.isFinite) ||
+      prediction.t < 0
+    ) {
+      return;
+    }
+    this.playerContactGuide = {
+      x: prediction.x,
+      y: prediction.y,
+      z: this.player.z,
+      plannedAt: this.simulationTime,
+      etaSec: prediction.t,
+    };
+  }
+
+  private visiblePlayerContactGuide(): PlayerContactGuide | null {
+    return this.controlModel === "direct-paddle-v1" &&
+        this.state.phase === "rally" &&
+        this.ball.live &&
+        this.ball.hitter === "A" &&
+        this.ball.bounces >= 1 &&
+        this.ball.vz < 0
+      ? this.playerContactGuide
+      : null;
+  }
+
   private playerContact(): void {
     if (
       this.ball.hitter === "P" ||
@@ -1119,6 +1224,14 @@ export class Game {
     });
     if (!contact) return;
 
+    this.lastPlayerContactFlightId = this.flightId;
+    this.directPaddle.beginContact(this.currentInputTime);
+    this.playerContactGuide = null;
+    this.lastDirectContactQuality = {
+      screenQuality: contact.screenQuality,
+      timingQuality: contact.timingQuality,
+      contactQuality: contact.contactQuality,
+    };
     const intent = buildShotIntent(contact, this.ball.lastBounceZ);
     const incoming = { spin: this.ball.spin, side: this.ball.side };
     const from = {
@@ -1126,7 +1239,6 @@ export class Game {
       y: Math.max(this.ball.y, SHOT_ORIGIN_Y_MIN),
       z: this.ball.z,
     };
-    this.lastPlayerContactFlightId = this.flightId;
     const solution = solveDirectPlayerShot({
       from,
       incoming,
@@ -1151,7 +1263,6 @@ export class Game {
     this.player.swing = 1;
     this.player.swingType = swingTypeOf(intent.classifiedShot);
     this.state.rally += 1;
-    this.directPaddle.beginContact(this.currentInputTime);
     this.feedback.hit(
       Math.min(1, Math.hypot(solution.vx, solution.vy, solution.vz) / 1500),
     );
@@ -1167,7 +1278,6 @@ export class Game {
     if (this.debugInput) {
       document.body.dataset.directShot = intent.classifiedShot;
       document.body.dataset.lastShot = intent.classifiedShot;
-      document.body.dataset.contactQuality = intent.contactQuality.toFixed(3);
       document.body.dataset.contactQualityBand =
         intent.contactQuality >= 0.67
           ? "high"
@@ -1221,6 +1331,8 @@ export class Game {
     this.ball.live = false;
     this.input?.reset();
     this.mark = null;
+    this.playerContactGuide = null;
+    this.lastDirectContactQuality = null;
     this.smashable = false;
     this.state.phase = "point";
     this.state.pointTimer = POINT_INTERVAL;

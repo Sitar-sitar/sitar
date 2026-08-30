@@ -1,6 +1,6 @@
 {
   "name": "sitar-table-tennis2",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "type": "module",
   "description": "スマートフォン横画面で遊べる卓球ゲームの開発・検証環境",
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "check:app": "node scripts/check-app.mjs",
     "check:dist": "node scripts/check-dist.mjs",
-    "test:unit": "node --test tests/app-contract.test.mjs tests/camera.test.ts tests/direct-calibration.test.ts tests/direct-shot.test.ts tests/feature.test.ts tests/game-core.test.ts tests/input-math.test.ts tests/layout.test.ts tests/opponent-ai.test.ts tests/paddle-contact.test.ts tests/paddle-pose.test.ts tests/shot-intent.test.ts tests/storage-schema.test.ts tests/stats.test.ts tests/stroke-math.test.ts tests/suspension.test.ts tests/timing.test.ts",
+    "test:unit": "node --test tests/app-contract.test.mjs tests/camera.test.ts tests/direct-calibration.test.ts tests/direct-shot.test.ts tests/feature.test.ts tests/game-core.test.ts tests/input-math.test.ts tests/layout.test.ts tests/opponent-ai.test.ts tests/paddle-contact.test.ts tests/paddle-pose.test.ts tests/reachable-contact.test.ts tests/render-guide.test.ts tests/shot-intent.test.ts tests/storage-schema.test.ts tests/stats.test.ts tests/stroke-math.test.ts tests/suspension.test.ts tests/timing.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:stability": "playwright test --workers=1 --retries=0 --repeat-each=3",
     "test": "npm run test:unit && npm run test:e2e",

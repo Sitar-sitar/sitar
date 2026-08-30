@@ -1,4 +1,6 @@
 import {
+  CONTACT_RELEASE_GRACE_FINE_SEC,
+  CONTACT_RELEASE_GRACE_TOUCH_SEC,
   CONTACT_ASSIST_FINE,
   CONTACT_ASSIST_TOUCH,
   MAX_GESTURE_SPEED,
@@ -12,7 +14,7 @@ import {
   POINTER_PREDICTION_MAX_DISTANCE_RATIO,
   POINTER_PREDICTION_MAX_SEC,
   P_SPEED,
-  RELEASE_GRACE_SEC,
+  STRIKE_ACTIVE_MAX_AGE_SEC,
   STROKE_HISTORY_SEC,
 } from "../config.ts";
 import type {
@@ -60,6 +62,7 @@ export interface PaddleDebugState {
   strikeActive: boolean;
   strikeSpeed: number;
   assistScale: number | null;
+  contactGraceMs: number;
 }
 
 function copyPose(pose: PaddlePose): PaddlePose {
@@ -70,6 +73,14 @@ function finiteTrackingMetrics(metrics: StrokeMetrics): boolean {
   return Object.values(metrics).every(Number.isFinite);
 }
 
+function withinDeadline(time: number, deadline: number): boolean {
+  return time <= deadline + 1e-9;
+}
+
+export function shortestAngleDelta(current: number, target: number): number {
+  return Math.atan2(Math.sin(target - current), Math.cos(target - current));
+}
+
 export class PaddleController {
   private interaction: PaddlePose | null = null;
   private previousFixed: PaddlePose | null = null;
@@ -78,7 +89,8 @@ export class PaddleController {
   private metrics: StrokeMetrics = ZERO_STROKE_METRICS;
   private pointerType: PointerKind | null = null;
   private releaseStrike: StrikeMetrics = ZERO_STRIKE_METRICS;
-  private followUntil = 0;
+  private releaseStrikeCapturedAt = 0;
+  private contactFollowUntil = 0;
   private lastInputTime = 0;
   private lastCanvasHeight = 0;
   private targetAngle = Math.PI / 2;
@@ -118,21 +130,13 @@ export class PaddleController {
     this.interaction.velocityY = this.metrics.vy * height;
     this.interaction.pointerDown = true;
     this.interaction.pointerType = this.pointerType;
-    this.interaction.phase = deriveStrikeMetrics(
+    const strike = deriveStrikeMetrics(
       this.history,
       height,
       update.time,
-    ).active
-      ? "armed"
-      : "tracking";
-    if (this.metrics.speed >= 0.15) {
-      this.targetAngle = Math.atan2(this.metrics.vy, this.metrics.vx) + Math.PI / 2;
-      this.targetTilt = clamp(
-        this.metrics.directionY + this.metrics.curvature * 0.4,
-        -1,
-        1,
-      );
-    }
+    );
+    this.interaction.phase = strike.active ? "armed" : "tracking";
+    this.updatePoseTarget(strike);
     this.previousFixed ??= copyPose(this.interaction);
     return copyPose(this.interaction);
   }
@@ -152,9 +156,13 @@ export class PaddleController {
     if (this.interaction.phase === "contact") {
       this.interaction.phase = "follow";
     }
-    if (this.interaction.phase === "follow" && frameTime > this.followUntil) {
+    if (
+      this.interaction.phase === "follow" &&
+      !withinDeadline(frameTime, this.contactFollowUntil)
+    ) {
       this.interaction.phase = "recover";
       this.releaseStrike = ZERO_STRIKE_METRICS;
+      this.releaseStrikeCapturedAt = 0;
     }
 
     if (this.interaction.pointerDown && this.latestSample) {
@@ -195,13 +203,18 @@ export class PaddleController {
         this.targetAngle = Math.PI / 2;
         this.targetTilt = 0;
       }
-      this.interaction.phase = deriveStrikeMetrics(
+      const strike = deriveStrikeMetrics(
         this.history,
         height,
         frameTime,
-      ).active
-        ? "armed"
-        : "tracking";
+      );
+      this.interaction.phase = strike.active ? "armed" : "tracking";
+      this.updatePoseTarget(strike);
+    } else if (this.interaction.phase === "follow") {
+      this.pointerAgeMs = 0;
+      this.predictionMs = 0;
+      this.predictionDistancePx = 0;
+      this.updatePoseTarget(this.getStrikeMetrics(frameTime));
     } else {
       this.pointerAgeMs = 0;
       this.predictionMs = 0;
@@ -230,7 +243,10 @@ export class PaddleController {
     const speedRatio = clamp(this.metrics.speed / MAX_GESTURE_SPEED, 0, 1);
     const tau = 0.02 + (0.008 - 0.02) * speedRatio;
     const alpha = 1 - Math.exp(-Math.max(0, frameDelta) / tau);
-    this.interaction.angle += (this.targetAngle - this.interaction.angle) * alpha;
+    this.interaction.angle += shortestAngleDelta(
+      this.interaction.angle,
+      this.targetAngle,
+    ) * alpha;
     this.interaction.tilt += (this.targetTilt - this.interaction.tilt) * alpha;
     this.interaction.contactFlash = Math.max(
       0,
@@ -253,19 +269,25 @@ export class PaddleController {
       this.lastCanvasHeight,
       time,
     );
+    this.releaseStrikeCapturedAt = time;
     this.interaction.pointerDown = false;
     this.interaction.phase = "follow";
-    this.followUntil = time + RELEASE_GRACE_SEC;
+    this.contactFollowUntil = this.pointerType === "touch"
+      ? time + CONTACT_RELEASE_GRACE_TOUCH_SEC
+      : this.pointerType === "mouse" || this.pointerType === "pen"
+        ? time + CONTACT_RELEASE_GRACE_FINE_SEC
+        : time;
   }
 
   public reset(): void {
     this.metrics = ZERO_STROKE_METRICS;
     this.releaseStrike = ZERO_STRIKE_METRICS;
+    this.releaseStrikeCapturedAt = 0;
     this.history.length = 0;
     this.debugStroke = [];
     this.latestSample = null;
     this.pointerType = null;
-    this.followUntil = 0;
+    this.contactFollowUntil = 0;
     this.lastInputTime = 0;
     this.pointerAgeMs = 0;
     this.predictionMs = 0;
@@ -283,15 +305,17 @@ export class PaddleController {
     if (!this.interaction) return;
     this.interaction.phase = "contact";
     this.interaction.contactFlash = 1;
-    this.followUntil = time + RELEASE_GRACE_SEC;
+    if (!this.interaction.pointerDown) {
+      this.contactFollowUntil = Math.min(this.contactFollowUntil, time);
+    }
   }
 
   public isContactEligible(time: number): boolean {
     const phase = this.interaction?.phase;
-    return (
+    return this.pointerType !== null && (
       phase === "tracking" ||
       phase === "armed" ||
-      (phase === "follow" && time <= this.followUntil)
+      (phase === "follow" && withinDeadline(time, this.contactFollowUntil))
     );
   }
 
@@ -324,9 +348,23 @@ export class PaddleController {
     if (this.interaction?.pointerDown) {
       return deriveStrikeMetrics(this.history, this.lastCanvasHeight, time);
     }
-    return this.interaction?.phase === "follow" && time <= this.followUntil
-      ? { ...this.releaseStrike }
-      : { ...ZERO_STRIKE_METRICS };
+    if (
+      this.interaction?.phase !== "follow" ||
+      !withinDeadline(time, this.contactFollowUntil)
+    ) {
+      return { ...ZERO_STRIKE_METRICS };
+    }
+    const releasedAge = this.releaseStrike.age + Math.max(
+      0,
+      time - this.releaseStrikeCapturedAt,
+    );
+    return {
+      ...this.releaseStrike,
+      age: releasedAge,
+      active:
+        this.releaseStrike.active &&
+        withinDeadline(releasedAge, STRIKE_ACTIVE_MAX_AGE_SEC),
+    };
   }
 
   public getAssistScale(): number | null {
@@ -343,11 +381,29 @@ export class PaddleController {
       strikeActive: strike.active,
       strikeSpeed: strike.speed,
       assistScale: this.getAssistScale(),
+      contactGraceMs:
+        this.interaction?.phase === "follow"
+          ? Math.max(0, Math.round((this.contactFollowUntil - time) * 1_000))
+          : 0,
     };
   }
 
   public getDebugStroke(): readonly PointerSample[] {
     return this.debugStroke;
+  }
+
+  private updatePoseTarget(strike: StrikeMetrics): void {
+    if (!strike.active) {
+      this.targetAngle = Math.PI / 2;
+      this.targetTilt = 0;
+      return;
+    }
+    this.targetAngle = Math.atan2(strike.vy, strike.vx) + Math.PI / 2;
+    this.targetTilt = clamp(
+      strike.directionY + strike.curvature * 0.4,
+      -1,
+      1,
+    );
   }
 
   private baseCenter(

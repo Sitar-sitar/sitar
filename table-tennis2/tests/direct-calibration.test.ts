@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildShotIntent } from "../src/control/shot-intent.ts";
+import { sweptPaddleContact } from "../src/control/contact.ts";
+import { PADDLE_BLADE_SCALE } from "../src/config.ts";
 import { onTable, simLand, solveDirectPlayerShot } from "../src/physics.ts";
-import type { ContactEvent, ShotId, StrikeMetrics } from "../src/types.ts";
+import type { ContactEvent, PaddlePose, ShotId, StrikeMetrics } from "../src/types.ts";
+import { paddleDepthRatio, paddleScreenRadius } from "../src/utils.ts";
+import { createProjectionCamera, projectWorldPoint, unprojectScreenXAtZ } from "../src/view/projection.ts";
 
 function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -124,4 +128,90 @@ test("v0.2.1 fixed population: 製品intent経路のside spin正負平均着地�
     means.push(xTotal / count);
   }
   assert.ok(means[0]! < 0 && means[1]! > 0, `side means: ${means.join(", ")}`);
+});
+
+test("v0.2.3 fixed population: passive PUSH quality 0.40の台内率は70%以上", () => {
+  const result = cohort("PUSH", 0.4, 20260805);
+  assert.equal(result.total, 1_200);
+  assert.ok(
+    result.landed / result.total >= 0.7,
+    `${result.landed}/${result.total}`,
+  );
+});
+
+test("assist端contactからintentとsolverまでpassive PUSH製品経路が成立する", () => {
+  const width = 900;
+  const height = 412;
+  const worldZ = -100;
+  const camera = createProjectionCamera(width, height);
+  const projected = projectWorldPoint(camera, 0, 22, worldZ);
+  const visualRx = paddleScreenRadius(
+    width,
+    height,
+    paddleDepthRatio(worldZ),
+  ) * PADDLE_BLADE_SCALE;
+  const pose: PaddlePose = {
+    screenX: projected.x,
+    screenY: projected.y,
+    worldX: 0,
+    worldZ,
+    velocityX: 0,
+    velocityY: 0,
+    angle: 0,
+    tilt: 0,
+    pointerDown: false,
+    phase: "follow",
+    contactFlash: 0,
+    pointerType: "touch",
+  };
+  const ballX = unprojectScreenXAtZ(
+    camera,
+    projected.x + visualRx * 1.4,
+    worldZ,
+  );
+  const before = {
+    x: ballX,
+    y: 22,
+    z: worldZ + 1,
+    vx: 0,
+    vy: -100,
+    vz: -500,
+    spin: 0.2,
+    side: -0.1,
+  };
+  const current = { ...before, z: worldZ };
+  const contact = sweptPaddleContact({
+    previousBall: before,
+    currentBall: current,
+    previousPaddle: pose,
+    currentPaddle: pose,
+    strikeMetrics: {
+      vx: 0,
+      vy: 0,
+      speed: 0,
+      displacement: 0,
+      directionX: 0,
+      directionY: 0,
+      verticality: 0,
+      curvature: 0,
+      age: 0.2,
+      active: false,
+    },
+    width,
+    height,
+    time: 1,
+  });
+  assert.ok(contact);
+  assert.equal(contact.contactQuality, 0.4);
+  const shotIntent = buildShotIntent(contact, -70);
+  assert.equal(shotIntent.classifiedShot, "PUSH");
+  assert.equal(shotIntent.passive, true);
+  const solution = solveDirectPlayerShot({
+    from: { x: current.x, y: current.y, z: current.z },
+    incoming: { spin: current.spin, side: current.side },
+    intent: shotIntent,
+    random: seededRandom(20260805),
+  });
+  assert.ok(solution);
+  assert.ok(Object.values(solution).every(Number.isFinite));
 });

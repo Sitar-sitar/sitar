@@ -11,8 +11,10 @@ import {
   PADDLE_HANDLE_WIDTH,
 } from "./config.ts";
 import { onTable } from "./physics.ts";
+import { playerContactGuideAlpha } from "./render-guide.ts";
 import type { RenderScene, Viewport } from "./types.ts";
 import {
+  clamp,
   clampPaddleScreenY,
   paddleDepthRatio,
   paddleHandleAngle,
@@ -67,6 +69,7 @@ export class Renderer {
     this.drawOpponent();
     this.drawTable();
     this.drawMark();
+    this.drawPlayerContactGuide();
     this.drawBall();
     this.drawPlayerPaddle();
     this.drawDebugStroke();
@@ -800,6 +803,44 @@ export class Renderer {
       7,
     );
     context.stroke();
+  }
+
+  private drawPlayerContactGuide(): void {
+    const scene = this.requiredScene();
+    const guide = scene.playerContactGuide;
+    if (
+      !guide ||
+      scene.game.phase !== "rally" ||
+      !scene.ball.live ||
+      scene.controlModel !== "direct-paddle-v1" ||
+      scene.ball.hitter !== "A" ||
+      scene.ball.bounces < 1 ||
+      scene.ball.vz >= 0
+    ) {
+      return;
+    }
+    const remaining = guide.etaSec - (scene.simulationTime - guide.plannedAt);
+    const alpha = playerContactGuideAlpha(remaining);
+    if (alpha <= 0) return;
+
+    const point = this.project(guide.x, guide.y, guide.z);
+    const radius = clamp(
+      paddleScreenRadius(
+        this.width,
+        this.height,
+        paddleDepthRatio(guide.z),
+      ) * 0.55,
+      7,
+      12,
+    );
+    const context = this.context;
+    context.save();
+    context.strokeStyle = `rgba(126,224,168,${alpha})`;
+    context.lineWidth = Math.max(1.5, radius * 0.16);
+    context.beginPath();
+    context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    context.stroke();
+    context.restore();
   }
 
   private requiredScene(): RenderScene {

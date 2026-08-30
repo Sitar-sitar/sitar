@@ -1,4 +1,5 @@
 import {
+  ASSIST_CONTACT_QUALITY_FLOOR,
   BALL_R,
   CONTACT_DEPTH_BASE,
   CONTACT_DEPTH_MAX,
@@ -118,10 +119,14 @@ export function sweptPaddleContact(
     (contactY / assistVisualRy) ** 2;
   const screenQuality = clamp(1 - Math.sqrt(assistQ), 0, 1);
   const timingQuality = clamp(1 - depthDistance / tolerance, 0, 1);
-  const contactQuality = clamp(
+  const rawContactQuality = clamp(
     0.7 * screenQuality + 0.3 * timingQuality,
     0,
     1,
+  );
+  const contactQuality = Math.max(
+    ASSIST_CONTACT_QUALITY_FLOOR,
+    rawContactQuality,
   );
   return {
     screenX:

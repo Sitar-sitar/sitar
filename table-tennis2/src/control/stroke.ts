@@ -4,7 +4,7 @@ import {
   CURVE_MIN_SEGMENT,
   MAX_GESTURE_SPEED,
   MAX_POINTER_SAMPLES,
-  RELEASE_GRACE_SEC,
+  STRIKE_ACTIVE_MAX_AGE_SEC,
   STRIKE_MIN_DISPLACEMENT,
   STRIKE_MIN_SPEED,
   STRIKE_MIN_VERTICALITY,
@@ -214,7 +214,7 @@ export function deriveStrikeMetrics(
       metrics.speed >= STRIKE_MIN_SPEED &&
       metrics.displacement >= STRIKE_MIN_DISPLACEMENT &&
       verticality >= STRIKE_MIN_VERTICALITY &&
-      metrics.age <= RELEASE_GRACE_SEC,
+      metrics.age <= STRIKE_ACTIVE_MAX_AGE_SEC,
   };
   return Object.values(result).every((value) =>
     typeof value === "boolean" || Number.isFinite(value)

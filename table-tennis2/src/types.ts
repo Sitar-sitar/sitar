@@ -254,6 +254,14 @@ export interface Mark {
   t: number;
 }
 
+export interface PlayerContactGuide {
+  x: number;
+  y: number;
+  z: number;
+  plannedAt: number;
+  etaSec: number;
+}
+
 export interface RenderScene {
   game: GameState;
   ball: BallState;
@@ -261,6 +269,8 @@ export interface RenderScene {
   opponent: AiState;
   trail: readonly Pick<BallVector, "x" | "y" | "z">[];
   mark: Mark | null;
+  simulationTime: number;
+  playerContactGuide: PlayerContactGuide | null;
   smashable: boolean;
   controlModel: ControlModel;
   directPlayerPose: PaddlePose | null;
