@@ -3,7 +3,12 @@ import test from "node:test";
 
 import { sweptPaddleContact } from "../src/control/contact.ts";
 import { ZERO_STRIKE_METRICS } from "../src/control/stroke.ts";
-import { BALL_R, PADDLE_BLADE_SCALE } from "../src/config.ts";
+import {
+  BALL_R,
+  CONTACT_ASSIST_FINE,
+  CONTACT_ASSIST_TOUCH,
+  PADDLE_BLADE_SCALE,
+} from "../src/config.ts";
 import type { BallVector, PaddlePose } from "../src/types.ts";
 import { paddleDepthRatio, paddleScreenRadius } from "../src/utils.ts";
 import { createProjectionCamera, projectWorldPoint, unprojectScreenXAtZ } from "../src/view/projection.ts";
@@ -47,6 +52,8 @@ test("ballとpaddleの相対掃引がblade内を横切ると接触する", () =>
     width,
     height,
     time: 1,
+    assistScale: CONTACT_ASSIST_TOUCH,
+    contactQualityFloor: 0.4,
   });
   assert.ok(contact);
   assert.ok(contact.contactQuality >= 0 && contact.contactQuality <= 1);
@@ -81,6 +88,8 @@ test("depth gate外では画面上で重なっても接触しない", () => {
       width,
       height,
       time: 1,
+      assistScale: CONTACT_ASSIST_TOUCH,
+      contactQualityFloor: 0.4,
     }),
     null,
   );
@@ -122,6 +131,8 @@ test("touch 1.40 / fine 1.20のassist輪郭とball外周境界を接触に使う
       width,
       height,
       time: 1,
+      assistScale: pointerType === "touch" ? CONTACT_ASSIST_TOUCH : CONTACT_ASSIST_FINE,
+      contactQualityFloor: 0.4,
     });
   };
 
@@ -171,6 +182,8 @@ test("成立したcontactだけquality 0.40以上へfloorしraw品質を保持�
     width,
     height,
     time: 1,
+    assistScale: CONTACT_ASSIST_TOUCH,
+    contactQualityFloor: 0.4,
   });
   assert.ok(contact);
   assert.ok(contact.screenQuality < 0.01);
@@ -206,6 +219,8 @@ test("pointer種別未確定ではcontact不可", () => {
     width,
     height,
     time: 1,
+    assistScale: CONTACT_ASSIST_TOUCH,
+    contactQualityFloor: 0.4,
   }), null);
 });
 
@@ -243,6 +258,8 @@ test("tiltとdepth代表値でもcontact値は有限に保たれる", () => {
         width,
         height,
         time: 1,
+        assistScale: CONTACT_ASSIST_TOUCH,
+        contactQualityFloor: 0.4,
       });
       assert.ok(contact);
       assert.ok(Object.values(contact).every((value) =>

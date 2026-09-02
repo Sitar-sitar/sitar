@@ -1,4 +1,12 @@
+import { readFileSync } from "node:fs";
+
 import { expect, test } from "@playwright/test";
+
+// cache名は package.json の版数から導出する。テスト側へ固定値を重複させない。
+const EXPECTED_CACHE_NAME = `table-tennis2-v${
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))
+    .version
+}`;
 
 async function expectServeControlsWithinRightRail(page) {
   const layout = await page.evaluate(() => {
@@ -215,6 +223,51 @@ test("難易度を変更して一時停止できる", async ({ page }) => {
 
   await page.locator("#resume").click();
   await expect(page.locator("#pause")).not.toHaveClass(/show/u);
+});
+
+test("難易度説明文が選択に追従し、568×320で開始操作が埋もれない", async ({ page }) => {
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.goto("/");
+
+  const desc = page.locator("#lvDesc");
+  // 初期表示は既定の中級。
+  await expect(desc).toHaveText("ふつうの球速。狙って合わせれば返せる");
+
+  await page.locator('[data-lv="easy"]').click();
+  await expect(desc).toHaveText(
+    "球が遅く、ラケットが当たりやすい。置くだけでも返せる",
+  );
+  await page.locator('[data-lv="hard"]').click();
+  await expect(desc).toHaveText(
+    "球が速く逆を突かれる。正確に合わせる必要がある",
+  );
+
+  // 説明行の追加で総高は19px増える（22px→41px）。タイトル画面は本変更前から
+  // 既にスクロールするため、受入条件は「開始操作が初期表示で可能」であること。
+  const start = page.locator("#start");
+  await expect(start).toBeVisible();
+  const reachable = await page.evaluate(() => {
+    const button = document.querySelector("#start");
+    if (!button) return null;
+    const box = button.getBoundingClientRect();
+    return {
+      withinViewport: box.top >= 0 && box.bottom <= window.innerHeight,
+      height: Math.round(box.height),
+    };
+  });
+  expect(reachable).not.toBeNull();
+  expect(reachable.withinViewport).toBe(true);
+  expect(reachable.height).toBeGreaterThanOrEqual(44);
+  // 44px操作領域は維持する。
+  for (const level of ["easy", "mid", "hard"]) {
+    const box = await page.locator(`[data-lv="${level}"]`).boundingBox();
+    expect(box).not.toBeNull();
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+
+  // 実際に押せることまで確認する（説明行の追加で開始操作が埋もれない）。
+  await start.click();
+  await expect(page.locator("#lvName")).toHaveText("上級");
 });
 
 test("844×390では得点をstage両上隅へ分離する", async ({ page }) => {
@@ -539,9 +592,9 @@ test("Service Workerは他世代キャッシュの同一URLを参照しない", 
   );
   await page.reload();
 
-  const result = await page.evaluate(async () => {
+  const result = await page.evaluate(async (expectedCacheName) => {
     const currentName = (await caches.keys()).find(
-      (key) => key === "table-tennis2-v0.2.3",
+      (key) => key === expectedCacheName,
     );
     if (!currentName) throw new Error("現行キャッシュがありません。");
     const current = await caches.open(currentName);
@@ -567,7 +620,7 @@ test("Service Workerは他世代キャッシュの同一URLを参照しない", 
     } finally {
       await caches.delete(staleName);
     }
-  });
+  }, EXPECTED_CACHE_NAME);
 
   expect(result).toEqual({ poisoned: false, refilled: true });
 });

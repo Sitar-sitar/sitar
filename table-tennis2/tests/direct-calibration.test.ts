@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { buildShotIntent } from "../src/control/shot-intent.ts";
 import { sweptPaddleContact } from "../src/control/contact.ts";
-import { PADDLE_BLADE_SCALE } from "../src/config.ts";
+import { CONTACT_ASSIST_TOUCH, PADDLE_BLADE_SCALE } from "../src/config.ts";
 import { onTable, simLand, solveDirectPlayerShot } from "../src/physics.ts";
 import type { ContactEvent, PaddlePose, ShotId, StrikeMetrics } from "../src/types.ts";
 import { paddleDepthRatio, paddleScreenRadius } from "../src/utils.ts";
@@ -200,6 +200,8 @@ test("assist端contactからintentとsolverまでpassive PUSH製品経路が成�
     width,
     height,
     time: 1,
+    assistScale: CONTACT_ASSIST_TOUCH,
+    contactQualityFloor: 0.4,
   });
   assert.ok(contact);
   assert.equal(contact.contactQuality, 0.4);

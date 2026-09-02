@@ -46,6 +46,20 @@ export interface LevelConfig {
   lob: number;
 }
 
+/** 難易度ごとのプレイ調整。LEVELS はAIの位置取り・技選択・狙い幅を担い、本型は球速・精度・操作補助を担う。 */
+export interface LevelPlayProfile {
+  /** AI の absolute 速度を「最低成立速度」と「現行抽選速度」の間で補間する係数。1 = 現行 */
+  readonly aiPace: number;
+  /** AI の基礎誤差に掛ける係数。blunder には掛けない */
+  readonly aiPrecision: number;
+  /** 接触補助倍率 CONTACT_ASSIST_TOUCH / _FINE に掛ける係数。1 = 現行 */
+  readonly assistScale: number;
+  /** 成立した接触の contactQuality 下限 */
+  readonly contactQualityFloor: number;
+  /** プレイヤー返球誤差に掛ける係数。1 = 現行 */
+  readonly playerErrorScale: number;
+}
+
 export type ShotSpeed =
   /** 絶対速度を抽選する。乱数1回。 */
   | { readonly model: "absolute"; readonly sp: readonly [number, number] }

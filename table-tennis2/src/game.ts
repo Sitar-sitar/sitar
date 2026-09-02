@@ -5,6 +5,7 @@ import {
   FIXED_STEP,
   FLOOR,
   HW,
+  LEVEL_PLAY,
   LEVELS,
   NET_H,
   NET_HW,
@@ -536,6 +537,9 @@ export class Game {
     this.player.x = 0;
     this.player.tx = 0;
     this.ai.reset();
+    this.directPaddle.setLevelAssistScale(
+      LEVEL_PLAY[this.state.level].assistScale,
+    );
     this.state.played += 1;
     this.ui.showGame();
     this.ui.updateHud(this.state);
@@ -545,6 +549,7 @@ export class Game {
   private selectLevel(level: LevelId): void {
     this.state.level = level;
     this.state.levelConfig = LEVELS[level];
+    this.directPaddle.setLevelAssistScale(LEVEL_PLAY[level].assistScale);
     this.ui.updateLevelSelection(level);
     this.ui.updateHud(this.state);
   }
@@ -905,6 +910,7 @@ export class Game {
       y: Math.max(this.ball.y, SHOT_ORIGIN_Y_MIN),
       z: this.ball.z,
     };
+    const play = LEVEL_PLAY[this.state.level];
     const solution = solveShot({
       from,
       type,
@@ -915,6 +921,9 @@ export class Game {
       extraError,
       ballY: this.ball.y,
       random: this.random,
+      // 難易度調整はAI側だけに掛ける。legacyのプレイヤー返球は既定の 1 / 1。
+      pace: who === "A" ? play.aiPace : 1,
+      precision: who === "A" ? play.aiPrecision : 1,
     });
 
     Object.assign(this.ball, from, solution);
@@ -1212,6 +1221,10 @@ export class Game {
     }
     const viewport = this.renderer?.getViewport();
     if (!viewport) return;
+    // 描画・debug・判定で同じ補助倍率を使う。pointer未確定時はnullで接触しない。
+    const assistScale = this.directPaddle.getAssistScale();
+    if (assistScale === null) return;
+    const play = LEVEL_PLAY[this.state.level];
     const contact = sweptPaddleContact({
       previousBall,
       currentBall: this.ball,
@@ -1221,6 +1234,8 @@ export class Game {
       width: viewport.width,
       height: viewport.height,
       time: this.currentInputTime,
+      assistScale,
+      contactQualityFloor: play.contactQualityFloor,
     });
     if (!contact) return;
 
@@ -1244,6 +1259,7 @@ export class Game {
       incoming,
       intent,
       random: this.random,
+      errorScale: play.playerErrorScale,
     });
     if (!solution) {
       this.ui.flash("返球できませんでした", "#ff8a6b", 0.7);

@@ -99,6 +99,8 @@ export class PaddleController {
   private predictionMs = 0;
   private predictionDistancePx = 0;
   private debugStroke: readonly PointerSample[] = [];
+  /** 難易度係数のみ保持する。最終補助倍率は pointer 種別と毎回積を取る（v0.2.4 §5.3.1） */
+  private levelAssistScale = 1;
 
   public applyInput(
     update: PaddleInputUpdate,
@@ -367,9 +369,17 @@ export class PaddleController {
     };
   }
 
+  public setLevelAssistScale(scale: number): void {
+    this.levelAssistScale =
+      Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }
+
   public getAssistScale(): number | null {
     if (!this.pointerType) return null;
-    return this.pointerType === "touch" ? CONTACT_ASSIST_TOUCH : CONTACT_ASSIST_FINE;
+    const base = this.pointerType === "touch"
+      ? CONTACT_ASSIST_TOUCH
+      : CONTACT_ASSIST_FINE;
+    return base * this.levelAssistScale;
   }
 
   public getDebugState(time: number): PaddleDebugState {

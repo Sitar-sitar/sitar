@@ -1,10 +1,7 @@
 import {
-  ASSIST_CONTACT_QUALITY_FLOOR,
   BALL_R,
   CONTACT_DEPTH_BASE,
   CONTACT_DEPTH_MAX,
-  CONTACT_ASSIST_FINE,
-  CONTACT_ASSIST_TOUCH,
   FIXED_STEP,
   PADDLE_BLADE_SCALE,
 } from "../config.ts";
@@ -26,6 +23,10 @@ export interface PaddleContactInput {
   width: number;
   height: number;
   time: number;
+  /** CONTACT_ASSIST_TOUCH / _FINE × LEVEL_PLAY[level].assistScale */
+  assistScale: number;
+  /** LEVEL_PLAY[level].contactQualityFloor */
+  contactQualityFloor: number;
 }
 
 function rotate(x: number, y: number, angle: number): { x: number; y: number } {
@@ -54,6 +55,8 @@ export function sweptPaddleContact(
     width,
     height,
     time,
+    assistScale,
+    contactQualityFloor,
   } = input;
   if (width <= 0 || height <= 0) return null;
   const tolerance = contactDepthTolerance(currentBall.vz);
@@ -90,9 +93,7 @@ export function sweptPaddleContact(
   const visualRx = radius * PADDLE_BLADE_SCALE;
   const visualRy = visualRx * 0.94 * squash;
   if (!currentPaddle.pointerType) return null;
-  const assistScale = currentPaddle.pointerType === "touch"
-    ? CONTACT_ASSIST_TOUCH
-    : CONTACT_ASSIST_FINE;
+  if (!Number.isFinite(assistScale) || assistScale <= 0) return null;
   const assistVisualRx = visualRx * assistScale;
   const assistVisualRy = visualRy * assistScale;
   const ballRadius = Math.max(2, BALL_R * currentProjected.s);
@@ -125,7 +126,7 @@ export function sweptPaddleContact(
     1,
   );
   const contactQuality = Math.max(
-    ASSIST_CONTACT_QUALITY_FLOOR,
+    contactQualityFloor,
     rawContactQuality,
   );
   return {

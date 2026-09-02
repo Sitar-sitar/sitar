@@ -1,6 +1,7 @@
 import type {
   LevelConfig,
   LevelId,
+  LevelPlayProfile,
   ServeLength,
   ServeLengthProfile,
   ServeProfile,
@@ -87,7 +88,7 @@ export const LEVELS: Record<LevelId, LevelConfig> = {
     refine: 0.34,
     smash: 0,
     chop: 0.05,
-    miss: 0.11,
+    miss: 0.26,
     spread: 0.32,
     reach: 30,
     depth: 84,
@@ -102,7 +103,7 @@ export const LEVELS: Record<LevelId, LevelConfig> = {
     refine: 0.18,
     smash: 0.4,
     chop: 0.25,
-    miss: 0.08,
+    miss: 0.09,
     spread: 0.72,
     reach: 30,
     depth: 95,
@@ -117,13 +118,48 @@ export const LEVELS: Record<LevelId, LevelConfig> = {
     refine: 0.05,
     smash: 0.85,
     chop: 0.35,
-    miss: 0.02,
+    miss: 0.01,
     spread: 1,
     reach: 33,
     depth: 100,
     serveErr: 0.016,
     lob: 0.9,
   },
+};
+
+/**
+ * 難易度ごとのプレイ調整（v0.2.4）。
+ * 上級は v0.2.3 の操作契約と同値（assistScale / contactQualityFloor / playerErrorScale）。
+ */
+export const LEVEL_PLAY: Record<LevelId, LevelPlayProfile> = {
+  easy: {
+    aiPace: 0.2,
+    aiPrecision: 1.55,
+    assistScale: 1.25,
+    contactQualityFloor: 0.55,
+    playerErrorScale: 0.6,
+  },
+  mid: {
+    aiPace: 0.65,
+    aiPrecision: 0.9,
+    assistScale: 1.1,
+    contactQualityFloor: 0.47,
+    playerErrorScale: 0.85,
+  },
+  hard: {
+    aiPace: 1,
+    aiPrecision: 0.45,
+    assistScale: 1,
+    contactQualityFloor: 0.4,
+    playerErrorScale: 1,
+  },
+};
+
+/** 難易度選択UIで表示する説明文 */
+export const LEVEL_DESCRIPTIONS: Record<LevelId, string> = {
+  easy: "球が遅く、ラケットが当たりやすい。置くだけでも返せる",
+  mid: "ふつうの球速。狙って合わせれば返せる",
+  hard: "球が速く逆を突かれる。正確に合わせる必要がある",
 };
 
 export const SERVE_TYPES: readonly ServeType[] = [
@@ -341,6 +377,12 @@ export const CONTACT_DEPTH_MAX = 24;
 export const CONTACT_ASSIST_TOUCH = 1.4;
 export const CONTACT_ASSIST_FINE = 1.2;
 export const ASSIST_CONTACT_QUALITY_FLOOR = 0.4;
+/** 必要速度を逆算するときの参照仰角（rad）。この付近で必要速度が最小になる */
+export const SHOT_MIN_SPEED_ELEV = 0.55;
+/** プレイヤー返球の必要速度フロアに掛ける余裕率 */
+export const PLAYER_SHOT_SPEED_MARGIN = 1.16;
+/** AI 返球の最低成立速度に掛ける余裕率 */
+export const AI_SHOT_SPEED_MARGIN = 1.05;
 export const MAX_TOP_SPIN = 1.25;
 export const MAX_SIDE_SPIN = 1;
 export const ACTIVE_SPIN_CARRY = 0.18;

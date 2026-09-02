@@ -1,7 +1,10 @@
 import {
   ACTIVE_SIDE_CARRY,
   ACTIVE_SPIN_CARRY,
+  AI_SHOT_SPEED_MARGIN,
   AZ,
+  PLAYER_SHOT_SPEED_MARGIN,
+  SHOT_MIN_SPEED_ELEV,
   CONTACT_PLANE_FAR,
   CONTACT_PLANE_NEAR,
   DRAG,
@@ -211,6 +214,24 @@ export function solveSpeed(
   return { speed: (low + high) / 2, azim: azimuth };
 }
 
+/**
+ * 打点から狙い着地点へ届く最低速度。乱数を消費しない純粋関数。
+ * `solveSpeed()` の探索範囲 [250, 1300] を超える要求は 1300 で飽和する。
+ */
+export function minimumViableSpeed(
+  from: Pick<BallVector, "x" | "y" | "z">,
+  targetX: number,
+  targetZ: number,
+  spin: number,
+  side: number,
+  margin: number,
+): number {
+  return (
+    solveSpeed(from, targetX, targetZ, SHOT_MIN_SPEED_ELEV, spin, side).speed *
+    margin
+  );
+}
+
 export function simState(initial: BallVector, time: number): BallVector {
   const ball = cloneBall(initial);
   const dt = 1 / 240;
@@ -348,6 +369,10 @@ export function solveShot(input: {
   extraError: number;
   ballY: number;
   random: () => number;
+  /** AI の absolute 速度を最低成立速度へ寄せる係数。1（既定）で現行と同一 */
+  pace?: number;
+  /** 基礎誤差に掛ける係数。1（既定）で現行と同一 */
+  precision?: number;
 }): { vx: number; vy: number; vz: number; spin: number; side: number } {
   const {
     from,
@@ -359,6 +384,8 @@ export function solveShot(input: {
     extraError,
     ballY,
     random,
+    pace = 1,
+    precision = 1,
   } = input;
   const shot = SHOTS[type];
   const targetZ =
@@ -414,6 +441,19 @@ export function solveShot(input: {
             0.86 +
             0.14 * Math.min(1, Math.max(0, (ballY - 20) / 30));
         }
+        // pace は「最低成立速度」と「抽選速度」の補間。抽選速度が最低成立速度を
+        // 下回る場合は min() により減速せず、届かない球を作らない。
+        if (pace < 1) {
+          const need = minimumViableSpeed(
+            from,
+            targetX,
+            targetZ,
+            spin,
+            side,
+            AI_SHOT_SPEED_MARGIN,
+          );
+          speed = lerp(Math.min(need, speed), speed, pace);
+        }
         const result = solveAngle(
           from,
           targetX,
@@ -447,7 +487,7 @@ export function solveShot(input: {
   }
 
   const error =
-    shot.err + (1 - contactQuality) * 0.055 + extraError;
+    (shot.err + (1 - contactQuality) * 0.055) * precision + extraError;
   elevation += (random() * 2 - 1) * error;
   azimuth += (random() * 2 - 1) * error * 1.5;
   speed *= 1 + (random() * 2 - 1) * error * 1.6;
@@ -464,8 +504,10 @@ export function solveDirectPlayerShot(input: {
   incoming: Pick<BallVector, "spin" | "side">;
   intent: ShotIntent;
   random: () => number;
+  /** 返球誤差に掛ける係数。1（既定）で現行と同一 */
+  errorScale?: number;
 }): { vx: number; vy: number; vz: number; spin: number; side: number } | null {
-  const { from, incoming, intent, random } = input;
+  const { from, incoming, intent, random, errorScale = 1 } = input;
   const shot = SHOTS[intent.classifiedShot];
   const targetX = intent.aimX * (HW - 7);
   const targetZ = lerp(24, HL - 14, intent.depth);
@@ -515,7 +557,19 @@ export function solveDirectPlayerShot(input: {
       break;
     }
     case "absolute": {
-      speed = lerp(shot.speed.sp[0] * 0.72, shot.speed.sp[1], intent.power);
+      // 打点が狙い着地点から遠いと抽選速度では物理的に届かない。必要速度を
+      // 片側フロアとして与える（速度は下げない）。drawn >= need では現行と一致する。
+      speed = Math.max(
+        lerp(shot.speed.sp[0] * 0.72, shot.speed.sp[1], intent.power),
+        minimumViableSpeed(
+          from,
+          targetX,
+          targetZ,
+          spin,
+          side,
+          PLAYER_SHOT_SPEED_MARGIN,
+        ),
+      );
       const result = solveAngle(
         from,
         targetX,
@@ -542,7 +596,8 @@ export function solveDirectPlayerShot(input: {
   }
 
   const qualityLoss = 1 - intent.contactQuality;
-  const error = shot.err + qualityLoss * qualityLoss * 0.16;
+  const error =
+    (shot.err + qualityLoss * qualityLoss * 0.16) * errorScale;
   const elevationRoll = random();
   const azimuthRoll = random();
   const speedRoll = random();

@@ -1,4 +1,5 @@
 import {
+  LEVEL_DESCRIPTIONS,
   LEVELS,
 } from "./config.ts";
 import {
@@ -77,6 +78,10 @@ export class Ui {
   private readonly scA = requiredElement("scA", HTMLDivElement);
   private readonly levelName = requiredElement(
     "lvName",
+    HTMLDivElement,
+  );
+  private readonly levelDesc = requiredElement(
+    "lvDesc",
     HTMLDivElement,
   );
   private readonly rally = requiredElement("rally", HTMLDivElement);
@@ -251,6 +256,7 @@ export class Ui {
         button.classList.toggle("sel", button.dataset.lv === level);
       },
     );
+    this.levelDesc.textContent = LEVEL_DESCRIPTIONS[level];
   }
 
   public updateServeControls(state: GameState): void {

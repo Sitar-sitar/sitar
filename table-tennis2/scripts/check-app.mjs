@@ -142,11 +142,51 @@ for (const [name, expected] of [
   ["CONTACT_ASSIST_FINE", "1.2"],
   ["ASSIST_CONTACT_QUALITY_FLOOR", "0.4"],
   ["PADDLE_SCREEN_Y_MIN", "0.35"],
+  ["SHOT_MIN_SPEED_ELEV", "0.55"],
+  ["PLAYER_SHOT_SPEED_MARGIN", "1.16"],
+  ["AI_SHOT_SPEED_MARGIN", "1.05"],
 ]) {
   if (!new RegExp(`export const ${name} = ${expected.replace(".", "\\.")};`, "u").test(configSource)) {
     fail(`src/config.ts の ${name} をv0.2.3設計値 ${expected} に合わせてください。`);
   }
 }
+// v0.2.4: 難易度別プロファイル15値とAI blunder確率を固定する。
+// 正規表現を使わず、"  <level>: {" 〜 "  }," のブロックを文字列で切り出して照合する。
+function levelBlock(source, declaration, level) {
+  const declStart = source.indexOf(declaration);
+  if (declStart < 0) return null;
+  const start = source.indexOf("  " + level + ": {", declStart);
+  if (start < 0) return null;
+  const end = source.indexOf("\n  },", start);
+  if (end < 0) return null;
+  return source.slice(start, end);
+}
+
+const expectedLevelPlay = {
+  easy: ["aiPace: 0.2,", "aiPrecision: 1.55,", "assistScale: 1.25,", "contactQualityFloor: 0.55,", "playerErrorScale: 0.6,"],
+  mid: ["aiPace: 0.65,", "aiPrecision: 0.9,", "assistScale: 1.1,", "contactQualityFloor: 0.47,", "playerErrorScale: 0.85,"],
+  hard: ["aiPace: 1,", "aiPrecision: 0.45,", "assistScale: 1,", "contactQualityFloor: 0.4,", "playerErrorScale: 1,"],
+};
+for (const [level, fields] of Object.entries(expectedLevelPlay)) {
+  const block = levelBlock(configSource, "export const LEVEL_PLAY", level);
+  if (!block) {
+    fail("src/config.ts の LEVEL_PLAY." + level + " が見つかりません。");
+    continue;
+  }
+  for (const field of fields) {
+    if (!block.includes(field)) {
+      fail("src/config.ts の LEVEL_PLAY." + level + " をv0.2.4設計値 " + field + " に合わせてください。");
+    }
+  }
+}
+
+for (const [level, miss] of [["easy", "miss: 0.26,"], ["mid", "miss: 0.09,"], ["hard", "miss: 0.01,"]]) {
+  const block = levelBlock(configSource, "export const LEVELS", level);
+  if (!block || !block.includes(miss)) {
+    fail("src/config.ts の LEVELS." + level + " をv0.2.4設計値 " + miss + " に合わせてください。");
+  }
+}
+
 if (configSource.includes("RELEASE_GRACE_SEC")) {
   fail("共用RELEASE_GRACE_SECを用途別のv0.2.3定数へ置き換えてください。");
 }

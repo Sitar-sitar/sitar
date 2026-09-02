@@ -5,6 +5,7 @@ import { OpponentAi } from "../src/ai.ts";
 import {
   BALL_R,
   FLOOR,
+  LEVEL_PLAY,
   PADDLE_BLADE_SCALE,
   PADDLE_LIMIT,
 } from "../src/config.ts";
@@ -41,8 +42,16 @@ const viewports = [
 
 test("v0.2.3 AI製品経路固定母集団は全viewportで縦方向へ到達可能", () => {
   let accepted = 0;
-  let minFineMargin = Number.POSITIVE_INFINITY;
-  let minTouchMargin = Number.POSITIVE_INFINITY;
+  const minFine: Record<string, number> = {
+    easy: Number.POSITIVE_INFINITY,
+    mid: Number.POSITIVE_INFINITY,
+    hard: Number.POSITIVE_INFINITY,
+  };
+  const minTouch: Record<string, number> = {
+    easy: Number.POSITIVE_INFINITY,
+    mid: Number.POSITIVE_INFINITY,
+    hard: Number.POSITIVE_INFINITY,
+  };
   let oldFineUnreachable = 0;
   let oldTouchUnreachable = 0;
   const shots = new Set<ShotId>();
@@ -130,13 +139,15 @@ test("v0.2.3 AI製品経路固定母集団は全viewportで縦方向へ到達可
                       : 0;
                   const visualRy = radius * PADDLE_BLADE_SCALE * 0.94;
                   const ballRadius = Math.max(2, BALL_R * projected.s);
-                  minFineMargin = Math.min(
-                    minFineMargin,
-                    visualRy * 0.85 * 1.2 + ballRadius - dy,
+                  // v0.2.4: 補助倍率は難易度スケールを含む。上級は1.0倍でv0.2.3と同値。
+                  const levelScale = LEVEL_PLAY[level].assistScale;
+                  minFine[level] = Math.min(
+                    minFine[level]!,
+                    visualRy * 0.85 * 1.2 * levelScale + ballRadius - dy,
                   );
-                  minTouchMargin = Math.min(
-                    minTouchMargin,
-                    visualRy * 0.85 * 1.4 + ballRadius - dy,
+                  minTouch[level] = Math.min(
+                    minTouch[level]!,
+                    visualRy * 0.85 * 1.4 * levelScale + ballRadius - dy,
                   );
                   if (viewport.width === 568 && viewport.height === 320) {
                     // Phase 10-0の負の対照: v0.2.3 assistを維持し、旧Y min
@@ -163,11 +174,21 @@ test("v0.2.3 AI製品経路固定母集団は全viewportで縦方向へ到達可
     }
   }
 
-  assert.equal(accepted, 30_362);
+  // v0.2.4: LEVELS.miss の変更で母集団自体が変わるため件数一致は受入条件にしない。
+  // 受入条件は「到達不能0件（最小margin > 0）」であり、件数は母集団崩壊の検知にだけ使う。
+  assert.ok(accepted >= 30_000, `accepted: ${accepted}`);
   assert.equal(shots.size, 7);
   assert.equal(levels.size, 3);
   assert.equal(oldFineUnreachable, 6);
   assert.equal(oldTouchUnreachable, 3);
-  assert.ok(minFineMargin >= 1, `fine minimum margin: ${minFineMargin}`);
-  assert.ok(minTouchMargin >= 1, `touch minimum margin: ${minTouchMargin}`);
+  for (const level of ["easy", "mid", "hard"] as const) {
+    assert.ok(minFine[level]! > 0, `${level} fine margin: ${minFine[level]}`);
+    assert.ok(minTouch[level]! > 0, `${level} touch margin: ${minTouch[level]}`);
+  }
+  // 上級は v0.2.3 と同一の補助倍率であり、1px以上の余裕を維持する。
+  assert.ok(minFine.hard! >= 1, `hard fine margin: ${minFine.hard}`);
+  assert.ok(minTouch.hard! >= 1, `hard touch margin: ${minTouch.hard}`);
+  // 補助拡大は単調であり、初級 >= 中級 >= 上級 の余裕になる。
+  assert.ok(minFine.easy! >= minFine.mid! && minFine.mid! >= minFine.hard!);
+  assert.ok(minTouch.easy! >= minTouch.mid! && minTouch.mid! >= minTouch.hard!);
 });
