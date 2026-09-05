@@ -1,38 +1,184 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { OpponentAi } from "../src/ai.ts";
 import {
+  ACTIVE_SIDE_CARRY,
+  ACTIVE_SPIN_CARRY,
   AI_SHOT_SPEED_MARGIN,
   CONTACT_ASSIST_FINE,
   CONTACT_ASSIST_TOUCH,
+  FIXED_STEP,
+  FLOOR,
   HL,
+  HW,
   LEVELS,
   LEVEL_PLAY,
+  MAX_SIDE_SPIN,
+  MAX_TOP_SPIN,
+  NET_H,
+  PADDLE_BLADE_SCALE,
+  PASSIVE_SIDE_CARRY,
+  PASSIVE_SPIN_CARRY,
   PLAYER_SHOT_SPEED_MARGIN,
   SHOTS,
   SHOT_ORIGIN_Y_MIN,
 } from "../src/config.ts";
 import { buildShotIntent } from "../src/control/shot-intent.ts";
+import { sweptPaddleContact } from "../src/control/contact.ts";
 import { PaddleController } from "../src/control/paddle.ts";
 import {
-  launch,
+  integrate,
   minimumViableSpeed,
   onTable,
   simLand,
-  solveAngle,
+  solveContactPlane,
   solveDirectPlayerShot,
   solveShot,
+  tableBounce,
 } from "../src/physics.ts";
 import type {
+  BallState,
   ContactEvent,
   LevelId,
+  PaddlePose,
+  PointerKind,
   PointerSample,
   ShotId,
+  ShotIntent,
 } from "../src/types.ts";
+import { paddleDepthRatio, paddleScreenRadius } from "../src/utils.ts";
+import {
+  createProjectionCamera,
+  projectWorldPoint,
+  unprojectScreenXAtZ,
+} from "../src/view/projection.ts";
 
 const SEED = 20260903;
 const LEVEL_IDS: readonly LevelId[] = ["easy", "mid", "hard"];
+
+/** 変更前コミット 0d324cd の solver 出力。scripts/generate-solver-fixture.mjs で再生成する。 */
+const fixture = JSON.parse(
+  readFileSync(new URL("./fixtures/v023-solver.json", import.meta.url), "utf8"),
+) as {
+  seed: number;
+  solveShotCases: {
+    input: {
+      from: { x: number; y: number; z: number };
+      type: ShotId;
+      direction: number;
+      aimX: number;
+      depth: number;
+      contactQuality: number;
+      extraError: number;
+      ballY: number;
+    };
+    output: { vx: number; vy: number; vz: number; spin: number; side: number };
+  }[];
+  directCases: {
+    from: { x: number; y: number; z: number };
+    incoming: { spin: number; side: number };
+    intent: ShotIntent;
+    output: { vx: number; vy: number; vz: number; spin: number; side: number };
+  }[];
+};
+
+/** fixture生成と同じLCG。 */
+function lcg(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 0x1_0000_0000;
+  };
+}
+
+const lerp = (a: number, b: number, ratio: number): number => a + (b - a) * ratio;
+const clampValue = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+/**
+ * 既存 tests/direct-calibration.test.ts と同じ母集団・LCG・製品intent経路を共有する。
+ * 物理処理を複製しないため solveDirectPlayerShot() をそのまま呼ぶ。
+ */
+const CALIBRATION_CASES = [
+  { x: -45, z: -100, y: 22, smashY: 30, aimX: -0.4 },
+  { x: 0, z: -100, y: 22, smashY: 52, aimX: 0 },
+  { x: 45, z: -100, y: 22, smashY: 74, aimX: 0.4 },
+] as const;
+
+function calibrationIntent(type: ShotId, quality: number, aimX: number) {
+  const active = type !== "PUSH";
+  const upward = type !== "CHOP";
+  const speed = type === "SMASH" ? 3.35 : 2.5;
+  const ballHeight = type === "SMASH" ? 52 : 30;
+  const built = buildShotIntent(
+    {
+      screenX: 0,
+      screenY: 0,
+      contactOffsetX: -aimX / 0.65,
+      contactOffsetY: 0,
+      screenQuality: quality,
+      timingQuality: quality,
+      contactQuality: quality,
+      ballHeight,
+      ballVelocityBefore: {
+        x: 0,
+        y: ballHeight,
+        z: -100,
+        vx: 0,
+        vy: 0,
+        vz: -500,
+        spin: 0.2,
+        side: -0.1,
+      },
+      strikeMetrics: {
+        vx: 0,
+        vy: active ? (upward ? -speed : speed) : 0,
+        speed: active ? speed : 0,
+        displacement: active ? 0.08 : 0,
+        directionX: 0,
+        directionY: active ? (upward ? -1 : 1) : 0,
+        verticality: active ? 1 : 0,
+        curvature: 0,
+        age: 0,
+        active,
+      },
+      time: 1,
+    },
+    -80,
+  );
+  assert.equal(built.classifiedShot, type);
+  return built;
+}
+
+function calibrationCohort(type: ShotId, quality: number, seed: number) {
+  const random = lcg(seed);
+  let landed = 0;
+  let total = 0;
+  for (const sample of CALIBRATION_CASES) {
+    for (let trial = 0; trial < 400; trial += 1) {
+      const from = {
+        x: sample.x,
+        y: type === "SMASH" ? sample.smashY : sample.y,
+        z: sample.z,
+      };
+      const solution = solveDirectPlayerShot({
+        from,
+        incoming: { spin: 0.2, side: -0.1 },
+        intent: calibrationIntent(type, quality, sample.aimX),
+        random,
+      });
+      total += 1;
+      if (!solution) continue;
+      const landing = simLand({ ...from, ...solution });
+      if (!landing.net && landing.z > 0 && onTable(landing.x, landing.z)) {
+        landed += 1;
+      }
+    }
+  }
+  return { total, landed };
+}
 
 function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
@@ -162,79 +308,138 @@ test("U-A2: 置くだけ返球のミス率は接触品質に対して単調増�
   assert.ok(worst && worst.rate < 1, `最深打点でミスが消えている: ${worst?.rate}`);
 });
 
-test("U-A3: 速度フロアは drawn >= need の入力で無効、drawn < need の入力でのみ速度を上げる", () => {
-  let noop = 0;
-  let bound = 0;
-  let driveLowFound = false;
-  for (const type of ["DRIVE", "SMASH", "PUSH", "CHOP"] as ShotId[]) {
-    const speed = SHOTS[type].speed;
-    if (speed.model !== "absolute") continue;
-    for (const power of [0.3, 1]) {
-      for (const z of [-30, -100, -178]) {
-        for (const y of [10, 25, 52]) {
-          const from = { x: 0, y, z };
-          const intent = buildShotIntent(
-            {
-              ...passiveContact(0.8, y, z),
-              strikeMetrics: {
-                vx: 0,
-                vy: type === "CHOP" ? 2.5 : -2.5,
-                speed: type === "SMASH" ? 3.35 : 2.5,
-                displacement: 0.08,
-                directionX: 0,
-                directionY: type === "CHOP" ? 1 : -1,
-                verticality: 1,
-                curvature: 0,
-                age: 0,
-                active: true,
-              },
-            },
-            -70,
-          );
-          const depth = intent.depth;
-          const targetZ = 24 + (HL - 14 - 24) * depth;
-          const drawn =
-            speed.sp[0] * 0.72 + (speed.sp[1] - speed.sp[0] * 0.72) * power;
-          const need = minimumViableSpeed(
-            from,
-            0,
-            targetZ,
-            intent.topSpin * 1.25,
-            0,
-            PLAYER_SHOT_SPEED_MARGIN,
-          );
-          if (drawn >= need) {
-            noop += 1;
-          } else {
-            bound += 1;
-            if (type === "DRIVE" && power === 0.3 && z === -178 && y === 10) {
-              driveLowFound = true;
-            }
-          }
-        }
+test("U-A3: 速度フロアは drawn >= need で旧v0.2.3出力と一致し、drawn < need でのみ速度を上げる", () => {
+  // 負の対照の比較元は、変更前コミット 0d324cd の solver 出力を固定した fixture。
+  // scripts/generate-solver-fixture.mjs で再生成できる。
+  let identical = 0;
+  let increased = 0;
+  let driveLowBinding = false;
+  for (const testCase of fixture.directCases) {
+    const { from, incoming, intent, output } = testCase;
+    const actual = solveDirectPlayerShot({
+      from,
+      incoming,
+      intent,
+      random: lcg(fixture.seed),
+    });
+    assert.ok(actual, JSON.stringify({ from, type: intent.classifiedShot }));
+    const oldSpeed = Math.hypot(output.vx, output.vy, output.vz);
+    const newSpeed = Math.hypot(actual.vx, actual.vy, actual.vz);
+    const speedSpec = SHOTS[intent.classifiedShot].speed;
+    if (speedSpec.model !== "absolute") continue;
+    const drawn = lerp(
+      speedSpec.sp[0] * 0.72,
+      speedSpec.sp[1],
+      intent.power,
+    );
+    const targetZ = lerp(24, HL - 14, intent.depth);
+    const spin = clampValue(
+      intent.topSpin * 1.25 +
+        incoming.spin * (intent.passive ? PASSIVE_SPIN_CARRY : ACTIVE_SPIN_CARRY),
+      -MAX_TOP_SPIN,
+      MAX_TOP_SPIN,
+    );
+    const side = clampValue(
+      incoming.side * (intent.passive ? PASSIVE_SIDE_CARRY : ACTIVE_SIDE_CARRY),
+      -MAX_SIDE_SPIN,
+      MAX_SIDE_SPIN,
+    );
+    const need = minimumViableSpeed(
+      from,
+      intent.aimX * (HW - 7),
+      targetZ,
+      spin,
+      side,
+      PLAYER_SHOT_SPEED_MARGIN,
+    );
+    if (drawn >= need) {
+      // フロアが無効な区画は旧出力と全要素一致しなければならない。
+      for (const key of ["vx", "vy", "vz", "spin", "side"] as const) {
+        assert.equal(
+          actual[key],
+          output[key],
+          `${intent.classifiedShot} z=${from.z} y=${from.y} power=${intent.power} ${key}`,
+        );
+      }
+      identical += 1;
+    } else {
+      assert.ok(
+        newSpeed > oldSpeed,
+        `${intent.classifiedShot} z=${from.z} y=${from.y}: ${newSpeed} <= ${oldSpeed}`,
+      );
+      increased += 1;
+      if (
+        intent.classifiedShot === "DRIVE" &&
+        intent.power === 0.3 &&
+        from.z === -178 &&
+        from.y === 10
+      ) {
+        driveLowBinding = true;
       }
     }
   }
-  // 両区画が非空でなければ、この負の対照は意味を持たない。
-  assert.ok(noop > 0, `drawn >= need の区画が空: ${noop}`);
-  assert.ok(bound > 0, `drawn < need の区画が空: ${bound}`);
+  // 両区画が非空でなければ負の対照として意味を持たない。
+  assert.ok(identical > 0, `drawn >= need の区画が空: ${identical}`);
+  assert.ok(increased > 0, `drawn < need の区画が空: ${increased}`);
   // 技種別ではなく述語で決まることの固定例。
-  assert.ok(driveLowFound, "DRIVE power0.3 の最深・最低打点が binding 側にない");
+  assert.ok(driveLowBinding, "DRIVE power0.3 の最深・最低打点が binding 側にない");
 });
 
-test("U-A4: 必要速度は solveSpeed の探索上限で飽和しても有限かつ正である", () => {
-  // 台の対角へ届かない極端な打点でも非有限を返さない。
-  const need = minimumViableSpeed(
-    { x: 0, y: 0.5, z: -178 },
-    69,
+test("U-A3': touch / arc モデルは errorScale=1 で旧v0.2.3出力と一致する", () => {
+  let checked = 0;
+  for (const testCase of fixture.directCases) {
+    const { from, incoming, intent, output } = testCase;
+    if (SHOTS[intent.classifiedShot].speed.model === "absolute") continue;
+    const actual = solveDirectPlayerShot({
+      from,
+      incoming,
+      intent,
+      random: lcg(fixture.seed),
+    });
+    assert.ok(actual);
+    for (const key of ["vx", "vy", "vz", "spin", "side"] as const) {
+      assert.equal(actual[key], output[key], `${intent.classifiedShot} ${key}`);
+    }
+    checked += 1;
+  }
+  assert.ok(checked > 0, `touch / arc の母集団が空: ${checked}`);
+});
+
+test("U-A4: 必要速度は探索上限で飽和し、製品の到達しうる入力はその手前に収まる", () => {
+  // solveSpeed は [250, 1300] を11回二分するため、飽和値は上限へ収束した (low+high)/2。
+  const cap = 1300 * PLAYER_SHOT_SPEED_MARGIN;
+  const saturating = minimumViableSpeed(
+    { x: 0, y: 0.2, z: -600 },
+    HW - 7,
     HL - 14,
-    1.25,
-    1,
+    MAX_TOP_SPIN,
+    MAX_SIDE_SPIN,
     PLAYER_SHOT_SPEED_MARGIN,
   );
-  assert.ok(Number.isFinite(need), `need=${need}`);
-  assert.ok(need > 0, `need=${need}`);
-  assert.ok(need <= 1300 * PLAYER_SHOT_SPEED_MARGIN, `need=${need}`);
+  assert.ok(Number.isFinite(saturating), `${saturating}`);
+  assert.ok(saturating > 0, `${saturating}`);
+  assert.ok(
+    cap - saturating < 1,
+    `飽和していない: ${saturating} (cap ${cap})`,
+  );
+
+  // 製品で発生する接触面・打点高さでは上限へ達しない（フロアが無効化されない）。
+  let worst = 0;
+  for (const z of PLANES) {
+    for (const y of [0.2, ...HEIGHTS, 52]) {
+      const need = minimumViableSpeed(
+        { x: 0, y, z },
+        HW - 7,
+        HL - 14,
+        MAX_TOP_SPIN,
+        MAX_SIDE_SPIN,
+        PLAYER_SHOT_SPEED_MARGIN,
+      );
+      assert.ok(Number.isFinite(need) && need > 0, `z=${z} y=${y}: ${need}`);
+      worst = Math.max(worst, need);
+    }
+  }
+  assert.ok(worst < cap * 0.95, `製品入力が飽和境界へ近すぎる: ${worst}`);
 });
 
 test("U-A5: active PUSH / CHOP は実接触面から相手コートへ戻る", () => {
@@ -282,97 +487,73 @@ test("U-A5: active PUSH / CHOP は実接触面から相手コートへ戻る", (
   }
 });
 
-test("U-A6: PLAYER_SHOT_SPEED_MARGIN は既存校正の下限根拠を保つ", () => {
-  // 1.16 が設計値。1.03 では PUSH の品質差が既存閾値 0.10 を割ることを負の対照とする。
+test("U-A6: PLAYER_SHOT_SPEED_MARGIN=1.16 は既存校正の4技を閾値変更なしで満たす", () => {
   assert.equal(PLAYER_SHOT_SPEED_MARGIN, 1.16);
-  const gapFor = (margin: number) => {
-    const rate = (quality: number) => {
-      const random = mulberry32(20260805);
-      const from = { x: 0, y: 22, z: -100 };
-      const intent = buildShotIntent(passiveContact(quality, 22, -100), -80);
-      let landed = 0;
-      for (let trial = 0; trial < 1200; trial += 1) {
-        const shot = SHOTS.PUSH;
-        if (shot.speed.model !== "absolute") throw new Error("model");
-        const targetZ = 24 + (HL - 14 - 24) * intent.depth;
-        const spin = 0.2 * 0.55;
-        const speed = Math.max(
-          shot.speed.sp[0] * 0.72 +
-            (shot.speed.sp[1] - shot.speed.sp[0] * 0.72) * intent.power,
-          minimumViableSpeed(from, 0, targetZ, spin, 0, margin),
-        );
-        const angle = solveAngle(from, 0, targetZ, speed, spin, 0);
-        const error = shot.err + (1 - quality) ** 2 * 0.16;
-        const elevation = angle.elev + (random() * 2 - 1) * error;
-        const azimuth = angle.azim + (random() * 2 - 1) * error * 1.5;
-        const finalSpeed = speed * (1 + (random() * 2 - 1) * error * 1.6);
-        const landing = simLand({
-          ...from,
-          ...launch(finalSpeed, elevation, azimuth),
-          spin,
-          side: 0,
-        });
-        if (!landing.net && landing.z > 0 && onTable(landing.x, landing.z)) {
-          landed += 1;
-        }
-      }
-      return landed / 1200;
-    };
-    return 1 - rate(0.25) - (1 - rate(0.85));
-  };
-  assert.ok(gapFor(1.03) < 0.1, `margin 1.03 の負の対照が成立しない: ${gapFor(1.03)}`);
+  // 既存 direct-calibration と同じ母集団・LCG seed・製品intent経路を共有する
+  // （物理処理を複製しない）。期待値は正本§6.3。
+  const expected: [ShotId, number][] = [
+    ["DRIVE", 0.279167],
+    ["CHOP", 0.240833],
+    ["PUSH", 0.114167],
+    ["SMASH", 0.354167],
+  ];
+  for (const [type, gap] of expected) {
+    const high = calibrationCohort(type, 0.85, 20260805);
+    const low = calibrationCohort(type, 0.25, 20260805);
+    assert.equal(high.total, 1200, type);
+    const highRate = high.landed / high.total;
+    const actualGap = 1 - low.landed / low.total - (1 - highRate);
+    assert.ok(
+      Math.abs(actualGap - gap) < 1e-6,
+      `${type} gap ${actualGap} != ${gap}`,
+    );
+    // 既存テストが課す条件そのもの。
+    assert.ok(actualGap >= 0.1, `${type} gap ${actualGap}`);
+    assert.ok(highRate >= (type === "SMASH" ? 0.7 : 0.85), `${type} ${highRate}`);
+  }
 });
 
-test("U-B1: 既定引数の solver は pace / precision を渡さない現行呼び出しと一致する", () => {
+test("U-B1: 既定引数の solveShot は旧v0.2.3出力と全要素一致する", () => {
+  let checked = 0;
+  for (const { input, output } of fixture.solveShotCases) {
+    const actual = solveShot({ ...input, random: lcg(fixture.seed) });
+    for (const key of ["vx", "vy", "vz", "spin", "side"] as const) {
+      assert.equal(
+        actual[key],
+        output[key],
+        `${input.type} y=${input.ballY} dir=${input.direction} q=${input.contactQuality} ${key}`,
+      );
+    }
+    checked += 1;
+  }
+  assert.equal(checked, fixture.solveShotCases.length);
+  assert.ok(checked > 0);
+});
+
+test("U-B1': 上級の製品パラメータは意図して弾道を変える（全速度モデル）", () => {
   const from = { x: 0, y: 26, z: 178 };
-  const call = (extra: { pace?: number; precision?: number }) =>
+  const call = (extra: { pace?: number; precision?: number }, type: ShotId) =>
     solveShot({
       from,
-      type: "DRIVE",
+      type,
       direction: -1,
       aimX: 25,
       depth: 90,
       contactQuality: 0.8,
       extraError: 0,
       ballY: 26,
-      random: mulberry32(SEED),
+      random: lcg(fixture.seed),
       ...extra,
     });
-  const defaults = call({});
-  const explicitOne = call({ pace: 1, precision: 1 });
-  for (const key of ["vx", "vy", "vz", "spin", "side"] as const) {
-    assert.equal(defaults[key], explicitOne[key], key);
-  }
-  // 上級の製品パラメータは意図して弾道を変える（回帰ではない）。
-  const hard = call({ pace: 1, precision: LEVEL_PLAY.hard.aiPrecision });
-  assert.notEqual(defaults.vz, hard.vz);
   // precision は速度モデル分岐の後に適用されるため touch / arc も変わる。
-  for (const type of ["STOP", "FLICK", "LOB"] as ShotId[]) {
-    const base = solveShot({
-      from,
-      type,
-      direction: -1,
-      aimX: 25,
-      depth: 90,
-      contactQuality: 0.8,
-      extraError: 0,
-      ballY: 26,
-      random: mulberry32(SEED),
-    });
-    const scaled = solveShot({
-      from,
-      type,
-      direction: -1,
-      aimX: 25,
-      depth: 90,
-      contactQuality: 0.8,
-      extraError: 0,
-      ballY: 26,
-      random: mulberry32(SEED),
-      precision: LEVEL_PLAY.hard.aiPrecision,
-    });
-    assert.notEqual(base.vz, scaled.vz, type);
+  for (const type of ["DRIVE", "SMASH", "STOP", "FLICK", "LOB"] as ShotId[]) {
+    const base = call({}, type);
+    const hard = call({ precision: LEVEL_PLAY.hard.aiPrecision }, type);
+    assert.notEqual(base.vz, hard.vz, type);
   }
+  // pace は absolute だけへ効く。
+  const paced = call({ pace: LEVEL_PLAY.easy.aiPace }, "DRIVE");
+  assert.notEqual(call({}, "DRIVE").vz, paced.vz);
 });
 
 test("U-B2: aiPace は抽選速度を下回る減速を行わない", () => {
@@ -597,4 +778,230 @@ test("U-C5: 補助倍率はpointer種別の確定・切替・失効・resetへ�
       `${level} mouse`,
     );
   }
+});
+
+/**
+ * 製品の接触経路で、補助輪郭端の接触を1件作る。
+ * offsetRatio=1.0 で assist 楕円の端、0 で中心。
+ */
+function edgeContact(
+  level: LevelId,
+  pointerType: PointerKind,
+  offsetRatio: number,
+  worldZ = -178,
+  ballY = 17,
+) {
+  const width = 844;
+  const height = 390;
+  const camera = createProjectionCamera(width, height);
+  const projected = projectWorldPoint(camera, 0, ballY, worldZ);
+  const radius = paddleScreenRadius(width, height, paddleDepthRatio(worldZ));
+  const assistScale =
+    (pointerType === "touch" ? CONTACT_ASSIST_TOUCH : CONTACT_ASSIST_FINE) *
+    LEVEL_PLAY[level].assistScale;
+  const visualRx = radius * PADDLE_BLADE_SCALE * assistScale;
+  const pose: PaddlePose = {
+    screenX: projected.x,
+    screenY: projected.y,
+    worldX: 0,
+    worldZ,
+    velocityX: 0,
+    velocityY: 0,
+    angle: 0,
+    tilt: 0,
+    pointerDown: false,
+    phase: "follow",
+    contactFlash: 0,
+    pointerType,
+  };
+  const ballX = unprojectScreenXAtZ(
+    camera,
+    projected.x + visualRx * offsetRatio,
+    worldZ,
+  );
+  const previousBall = {
+    x: ballX,
+    y: ballY,
+    z: worldZ + 1,
+    vx: 0,
+    vy: -100,
+    vz: -500,
+    spin: 0.2,
+    side: -0.1,
+  };
+  return sweptPaddleContact({
+    previousBall,
+    currentBall: { ...previousBall, z: worldZ },
+    previousPaddle: pose,
+    currentPaddle: pose,
+    strikeMetrics: {
+      vx: 0,
+      vy: 0,
+      speed: 0,
+      displacement: 0,
+      directionX: 0,
+      directionY: 0,
+      verticality: 0,
+      curvature: 0,
+      age: 0.2,
+      active: false,
+    },
+    width,
+    height,
+    time: 1,
+    assistScale,
+    contactQualityFloor: LEVEL_PLAY[level].contactQualityFloor,
+  });
+}
+
+test("U-C3: 補助輪郭端の接触品質は難易度別の下限へ丸められる（0.4固定への退行を検出する）", () => {
+  const observed: number[] = [];
+  for (const level of LEVEL_IDS) {
+    for (const pointerType of ["touch", "mouse"] as PointerKind[]) {
+      const contact = edgeContact(level, pointerType, 1);
+      assert.ok(contact, `${level}/${pointerType} で接触が成立しない`);
+      // 輪郭端は screenQuality≈0 なので、品質は下限そのものになる。
+      assert.equal(
+        contact.contactQuality,
+        LEVEL_PLAY[level].contactQualityFloor,
+        `${level}/${pointerType}: ${contact.contactQuality}`,
+      );
+      observed.push(contact.contactQuality);
+    }
+    // 中心接触は下限より高い品質になる（下限が上書きしていないこと）。
+    const center = edgeContact(level, "touch", 0);
+    assert.ok(center);
+    assert.ok(
+      center.contactQuality > LEVEL_PLAY[level].contactQualityFloor,
+      `${level} 中心: ${center.contactQuality}`,
+    );
+  }
+  // 初級 > 中級 > 上級 の下限が実際に出ていること。
+  assert.ok(observed[0]! > observed[2]! && observed[2]! > observed[4]!, observed.join(", "));
+});
+
+test("U-D1: 実接触面 z=-178 の輪郭端接触は、非ゼロincoming spinでも相手コートへ着地する", () => {
+  for (const [level, pointerType] of [
+    ["easy", "touch"],
+    ["hard", "mouse"],
+  ] as [LevelId, PointerKind][]) {
+    const contact = edgeContact(level, pointerType, 1);
+    assert.ok(contact, `${level}/${pointerType}`);
+    const intent = buildShotIntent(contact, -70);
+    assert.equal(intent.classifiedShot, "PUSH");
+    assert.equal(intent.passive, true);
+    const from = { x: 0, y: Math.max(contact.ballHeight, SHOT_ORIGIN_Y_MIN), z: -178 };
+    const random = mulberry32(SEED);
+    let landed = 0;
+    for (let trial = 0; trial < 400; trial += 1) {
+      const solution = solveDirectPlayerShot({
+        from,
+        // 製品と同じく非ゼロのincoming spin / sideを持ち込む。
+        incoming: { spin: 0.2, side: -0.1 },
+        intent,
+        random,
+        errorScale: LEVEL_PLAY[level].playerErrorScale,
+      });
+      assert.ok(solution);
+      const landing = simLand({ ...from, ...solution });
+      if (!landing.net && landing.z > 0 && onTable(landing.x, landing.z)) {
+        landed += 1;
+      }
+    }
+    const rate = landed / 400;
+    const minimum = level === "easy" ? 0.95 : 0.6;
+    assert.ok(rate >= minimum, `${level}/${pointerType}: ${rate}`);
+  }
+});
+
+test("U-C1: 返球猶予p50は初級 >= 0.45s > 中級 >= 0.40s > 上級（0.27-0.30s）", () => {
+  // 設計書§3.1 生成器Aと同じ母集団・seed・除外条件。試行数はunit向けにN=1,500。
+  const medians = LEVEL_IDS.map((level) => {
+    const random = mulberry32(SEED);
+    const ai = new OpponentAi(random);
+    const flights: number[] = [];
+    for (let trial = 0; trial < 1500; trial += 1) {
+      const ball: BallState = {
+        x: (random() * 2 - 1) * 45,
+        y: 16 + random() * 26,
+        z: 150 + random() * 28,
+        vx: 0,
+        vy: -120,
+        vz: 300,
+        spin: 0.2,
+        side: 0,
+        live: true,
+        hitter: "P",
+        bounces: 1,
+        serveStage: 0,
+        lastBounceZ: 40 + random() * 70,
+      };
+      ai.state.x = ball.x + (random() * 2 - 1) * LEVELS[level].reach * 0.7;
+      const playerX = (random() * 2 - 1) * 60;
+      const decision = ai.decideShot(ball, playerX, level);
+      if (!decision) continue;
+      const from = {
+        x: ball.x,
+        y: Math.max(ball.y, SHOT_ORIGIN_Y_MIN),
+        z: ball.z,
+      };
+      const solution = solveShot({
+        from,
+        type: decision.type,
+        direction: -1,
+        aimX: decision.aim,
+        depth: decision.depth,
+        contactQuality: decision.quality,
+        extraError: decision.blunder,
+        ballY: ball.y,
+        random,
+        pace: LEVEL_PLAY[level].aiPace,
+        precision: LEVEL_PLAY[level].aiPrecision,
+      });
+      const landing = simLand({ ...from, ...solution });
+      if (landing.net || !onTable(landing.x, landing.z) || landing.z >= 0) continue;
+      Object.assign(ball, from, solution);
+      ball.hitter = "A";
+      ball.bounces = 0;
+      ball.lastBounceZ = null;
+      const plane = solveContactPlane(ball, "P");
+      let previousY: number;
+      let previousZ: number;
+      let bounced = false;
+      let elapsed = 0;
+      for (let step = 0; step < 240 * 5; step += 1) {
+        previousY = ball.y;
+        previousZ = ball.z;
+        integrate(ball, FIXED_STEP);
+        elapsed += FIXED_STEP;
+        if (previousZ < 0 !== ball.z < 0) {
+          const ratio = (0 - previousZ) / (ball.z - previousZ);
+          if (previousY + (ball.y - previousY) * ratio < NET_H) break;
+        }
+        if (previousY > 0 && ball.y <= 0) {
+          if (!onTable(ball.x, ball.z)) break;
+          if (!bounced && ball.z < 0) {
+            bounced = true;
+            tableBounce(ball);
+            continue;
+          }
+          break;
+        }
+        if (ball.y < FLOOR) break;
+        if (bounced && previousZ > plane && ball.z <= plane) {
+          flights.push(elapsed);
+          break;
+        }
+      }
+    }
+    assert.ok(flights.length > 500, `${level} 標本不足: ${flights.length}`);
+    const sorted = [...flights].sort((a, b) => a - b);
+    return sorted[Math.floor(0.5 * sorted.length)]!;
+  });
+  const [easy, mid, hard] = medians as [number, number, number];
+  assert.ok(easy >= 0.45, `初級 ${easy}`);
+  assert.ok(easy > mid, `初級 ${easy} <= 中級 ${mid}`);
+  assert.ok(mid >= 0.4, `中級 ${mid}`);
+  assert.ok(mid > hard, `中級 ${mid} <= 上級 ${hard}`);
+  assert.ok(hard >= 0.27 && hard <= 0.3, `上級 ${hard}`);
 });

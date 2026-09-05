@@ -95,6 +95,9 @@ test("v0.2.3 AI製品経路固定母集団は全viewportで縦方向へ到達可
                   extraError: decision.blunder,
                   ballY: ball.y,
                   random,
+                  // v0.2.4: 製品経路（game.ts makeShot）と同じ難易度パラメータを通す。
+                  pace: LEVEL_PLAY[level].aiPace,
+                  precision: LEVEL_PLAY[level].aiPrecision,
                 });
                 const flight = { ...from, ...solution };
                 const landing = simLand(flight);
