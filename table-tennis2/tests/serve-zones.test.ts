@@ -91,16 +91,14 @@ test("U-V8(d): 帯の中央値が short < middle < long", (t) => {
   };
   assert.ok(median("short") < median("middle"));
   assert.ok(median("middle") < median("long"));
-  // 「short の上端 < long の下端」は SERVE_ZONE_PAD = 6 の重なりにより未達。
-  // 基準弾道の生の範囲（short 最大 45.26 / long 最小 49.44）は重ならない。
+  // 向かい合う縁だけ pad を縮める規則により、short の上端 < long の下端が成立する。
   const shortHigh = SERVE_ZONE_Z.short[1];
   const longLow = SERVE_ZONE_Z.long[0];
-  if (shortHigh >= longLow) {
-    t.diagnostic(
-      `受入条件(d)の後段が未達: short上端=${shortHigh} >= long下端=${longLow}（重なり ${(shortHigh - longLow).toFixed(2)}cm）。` +
-        "設計書§5.9.2に処置が固定されていないため、実装ログへ記録して判断を仰ぐ。",
-    );
-  }
+  t.diagnostic(`short上端=${shortHigh} / long下端=${longLow}`);
+  assert.ok(
+    shortHigh < longLow,
+    `short の上端 ${shortHigh} は long の下端 ${longLow} より小さくしてください。`,
+  );
 });
 
 test("U-V8(e): 帯が [4, HL-3] の内側に収まる", () => {

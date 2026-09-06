@@ -466,7 +466,11 @@ export const CONTACT_QUALITY_LABEL_THRESHOLDS: readonly [
   number,
   number,
 ] = [0.9, 0.75, 0.6];
-/** サーブ着地帯（目安）の余白 cm。 */
+/**
+ * サーブ着地帯（目安）の余白 cm。
+ * short の上端と long の下端が向かい合う縁だけは、受入条件 (d) 後段
+ * 「short の上端 < long の下端」を満たすため測定側で縮められる（§5.9.2）。
+ */
 export const SERVE_ZONE_PAD = 6;
 /**
  * §5.9.2: サーブ着地帯（目安）の z 範囲。`scripts/measure-serve-zones.mjs` の
@@ -479,12 +483,19 @@ export const SERVE_ZONE_Z: Record<
   ServeLength,
   readonly [number, number]
 > = {
-  short: [10.58, 51.26],
+  short: [10.58, 46.85],
   middle: [14.1, 108.66],
-  long: [43.44, 134],
+  long: [47.85, 134],
 };
 /** 相手の構えの傾き。描画のみで判定には影響しない。 */
 export const OPPONENT_LEAN_GAIN = 0.08;
 export const OPPONENT_LEAN_MAX = 6;
+/**
+ * 相手を描く奥行き cm。**描画専用**であり、打球判定に使う `OpponentAi.state.z`
+ * （接触面 30〜178）には一切触れない。判定面をそのまま描くと、天板奥端の投影
+ * （844×390 で y ≈ 107px）より下に胴・脚・サーブ待ちの球が来て天板に覆われ、
+ * 頭部しか見えない。天板奥端 `HL = 137` より奥へ固定して上半身が覗くようにする。
+ */
+export const OPPONENT_DRAW_Z = 240;
 /** 停止からの復帰直後に丸める dt の上限 s。 */
 export const EFFECT_DT_MAX_SEC = 0.25;

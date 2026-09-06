@@ -25,6 +25,8 @@ import {
 } from "../src/physics.ts";
 
 const SEED = 20260906;
+/** short の上端と long の下端に残す最小の間隔 cm。 */
+const SERVE_ZONE_GAP = 1;
 const DIRECTION = 1;
 /** `speed` は MAX_GESTURE_SPEED × 2 = 7.2 で飽和するため vx の絶対値上限も 7.2。 */
 export const FLICK_VX_SAMPLES = [
@@ -162,12 +164,25 @@ export function measureServeZones(pad = SERVE_ZONE_PAD) {
     }
   }
 
+  // 受入条件 (d) 後段「short の上端 < long の下端」を満たすため、
+  // 隣接する short / long の**向かい合う縁だけ** pad を縮める。
+  // 基準弾道の生の範囲（short 最大 / long 最小）は重ならないため、
+  // 生の隙間を半分ずつ使い、1cm の間隔を残す。
+  const shortMax = Math.max(...stats.short.baseZ);
+  const longMin = Math.min(...stats.long.baseZ);
+  const facingPad = Math.max(
+    0,
+    Math.min(pad, (longMin - shortMax) / 2 - SERVE_ZONE_GAP / 2),
+  );
+
   const zones = {};
   const report = {};
   for (const length of SERVE_LENGTHS) {
     const bucket = stats[length];
-    const low = Math.max(4, Math.min(...bucket.baseZ) - pad);
-    const high = Math.min(HL - 3, Math.max(...bucket.baseZ) + pad);
+    const lowPad = length === "long" ? facingPad : pad;
+    const highPad = length === "short" ? facingPad : pad;
+    const low = Math.max(4, Math.min(...bucket.baseZ) - lowPad);
+    const high = Math.min(HL - 3, Math.max(...bucket.baseZ) + highPad);
     zones[length] = [round(low), round(high)];
     const included = bucket.errorZ.filter(
       (z) => z >= zones[length][0] && z <= zones[length][1],
@@ -190,6 +205,7 @@ export function measureServeZones(pad = SERVE_ZONE_PAD) {
       errorIncluded: included,
       errorInclusionRate: rate(included, bucket.errorZ.length),
       zone: zones[length],
+      facingPad: round(facingPad),
     };
   }
   return { zones, report };

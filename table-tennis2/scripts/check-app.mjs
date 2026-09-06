@@ -185,6 +185,7 @@ for (const [name, expected] of [
   ["SERVE_ZONE_PAD", "6"],
   ["OPPONENT_LEAN_GAIN", "0.08"],
   ["OPPONENT_LEAN_MAX", "6"],
+  ["OPPONENT_DRAW_Z", "240"],
   ["EFFECT_DT_MAX_SEC", "0.25"],
 ]) {
   if (

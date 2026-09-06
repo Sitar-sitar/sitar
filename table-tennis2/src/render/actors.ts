@@ -4,6 +4,7 @@
 import {
   BALL_R,
   FLOOR,
+  OPPONENT_DRAW_Z,
   PADDLE_BLADE_SCALE,
   PADDLE_HANDLE_INSET,
   PADDLE_HANDLE_LENGTH,
@@ -36,7 +37,8 @@ export function drawOpponent(
 ): void {
   const context = surface.context;
   const opponent = scene.opponent;
-  const z = opponent.z + 16;
+  // 奥行きは描画専用の固定値。判定面 opponent.z は読み取らない（§5.6 / N-3）。
+  const z = OPPONENT_DRAW_Z;
   const scale = projectOn(surface, opponent.x, FLOOR, z).s;
   const bodyX = opponent.x + pose.lean;
   const feet = projectOn(surface, opponent.x, FLOOR, z);
@@ -116,7 +118,7 @@ export function drawOpponent(
   const swing = opponent.swing > 0 ? Math.sin(opponent.swing * Math.PI) : 0;
   const racketX = opponent.x + 12 + swing * 16;
   const racketY = FLOOR + 44 + swing * 10;
-  const hand = projectOn(surface, racketX, racketY, opponent.z + 10);
+  const hand = projectOn(surface, racketX, racketY, OPPONENT_DRAW_Z - 6);
   const shoulder = projectOn(surface, bodyX + 8, FLOOR + 62 + pose.sway, z);
   context.strokeStyle = THEME.opponentShirt;
   context.lineWidth = Math.max(2.5, 6 * scale);
@@ -139,7 +141,12 @@ export function drawOpponent(
     scene.game.server === "A" &&
     !scene.ball.live
   ) {
-    const free = projectOn(surface, opponent.x - 10, FLOOR + 40, opponent.z + 10);
+    const free = projectOn(
+      surface,
+      opponent.x - 10,
+      FLOOR + 40,
+      OPPONENT_DRAW_Z - 6,
+    );
     context.strokeStyle = THEME.opponentShirt;
     context.lineWidth = Math.max(2.5, 6 * scale);
     context.beginPath();
