@@ -293,6 +293,56 @@ export interface RenderScene {
   debugStroke: readonly Pick<PointerSample, "stageX" | "stageY">[];
 }
 
+/** v0.3.0 §5.8.3: 試合状況チップの種別。判定は rules.ts の matchSituation()。 */
+export type MatchSituation = "deuce" | "match-point-P" | "match-point-A" | null;
+
+/** v0.3.0 §5.8.4: HUD演出のエッジ検出に使う前回スナップショット。 */
+export interface HudSnapshot {
+  scP: number;
+  scA: number;
+  rally: number;
+}
+
+export type HudPulse = "score-P" | "score-A" | "rally";
+
+/**
+ * v0.3.0 §5.1.3: 視覚演出のためだけに Game が発行するイベント。
+ * Feedback（音・振動）を呼ぶ地点と1対1に対応する。Renderer だけが
+ * drainVisualEvents() で消費し、RenderScene には載せない（N-6）。
+ */
+export type VisualEvent =
+  | {
+      kind: "contact";
+      side: Side;
+      /** 接触時点の実際の球位置。solverへ渡すクランプ後の y ではない。 */
+      x: number;
+      y: number;
+      z: number;
+      shot: ShotId;
+      passive: boolean;
+      contactQuality: number | null;
+      time: number;
+    }
+  | { kind: "bounce"; x: number; z: number; time: number }
+  /** x / y は updatePhysics() が計算済みのネット面交点（ball.z を 0 へ書き換える前）。 */
+  | { kind: "net"; x: number; y: number; time: number }
+  | {
+      kind: "serve";
+      side: Side;
+      serveType: ServeType;
+      serveLength: ServeLength;
+      time: number;
+    }
+  | {
+      kind: "point";
+      winner: Side;
+      reason: string;
+      scP: number;
+      scA: number;
+      ball: { x: number; y: number; z: number };
+      time: number;
+    };
+
 export interface Viewport {
   width: number;
   height: number;

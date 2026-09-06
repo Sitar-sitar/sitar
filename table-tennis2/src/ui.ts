@@ -1,7 +1,11 @@
 import {
   LEVEL_DESCRIPTIONS,
   LEVELS,
+  POINT_BANNER_FINAL_SEC,
+  POINT_BANNER_SEC,
+  SCORE_PULSE_MS,
 } from "./config.ts";
+import { matchSituation } from "./rules.ts";
 import {
   formatRecordLabel,
   formatResultRecordText,
@@ -9,13 +13,27 @@ import {
 } from "./stats.ts";
 import type {
   GameState,
+  HudSnapshot,
   LevelId,
+  MatchSituation,
   PlayerRecord,
   PlayerStats,
   ResultRecord,
+  Side,
   StatsPhase,
   StatsUnavailableReason,
 } from "./types.ts";
+import { effectPolicy, type EffectPolicy } from "./view/effects.ts";
+import { hudPulseEvents, pointBannerText } from "./view/hud-text.ts";
+
+const SITUATION_LABELS: Record<
+  Exclude<MatchSituation, null>,
+  string
+> = {
+  deuce: "デュース",
+  "match-point-P": "マッチポイント",
+  "match-point-A": "相手マッチポイント",
+};
 
 interface UiHandlers {
   start: () => void;
@@ -70,12 +88,40 @@ export class Ui {
     "hint",
     HTMLDivElement,
   );
+  private readonly pointBanner = requiredElement(
+    "pointBanner",
+    HTMLDivElement,
+  );
+  private readonly pointBannerTitle = requiredElement(
+    "pointBannerTitle",
+    HTMLDivElement,
+  );
+  private readonly pointBannerDetail = requiredElement(
+    "pointBannerDetail",
+    HTMLDivElement,
+  );
+  private readonly situation = requiredElement(
+    "situation",
+    HTMLDivElement,
+  );
+  private readonly resultMaxRally = requiredElement(
+    "rMaxRally",
+    HTMLDivElement,
+  );
   private readonly serveControls = requiredElement(
     "serveControls",
     HTMLElement,
   );
   private readonly scP = requiredElement("scP", HTMLDivElement);
   private readonly scA = requiredElement("scA", HTMLDivElement);
+  private readonly playerScoreCard = requiredElement(
+    "playerScoreCard",
+    HTMLDivElement,
+  );
+  private readonly opponentScoreCard = requiredElement(
+    "opponentScoreCard",
+    HTMLDivElement,
+  );
   private readonly levelName = requiredElement(
     "lvName",
     HTMLDivElement,
@@ -172,6 +218,10 @@ export class Ui {
     HTMLButtonElement,
   );
   private flashTime = 0;
+  private bannerTime = 0;
+  private hudPrev: HudSnapshot = { scP: 0, scA: 0, rally: 0 };
+  private policy: EffectPolicy = effectPolicy(false);
+  private readonly pulseTimers = new Map<HTMLElement, number>();
   private playerHandlers: PlayerUiHandlers | null = null;
   private playersCache: readonly PlayerRecord[] = [];
   private selectedPlayerId: string | null = null;
@@ -248,6 +298,111 @@ export class Ui {
     document.body.dataset.selectedServeType = state.selectedServeType;
     document.body.dataset.selectedServeLength =
       state.selectedServeLength;
+    this.updateSituation(state);
+    this.updateServeZoneAttribute(state);
+    this.applyHudPulses(state);
+  }
+
+  /** v0.3.0 §5.8.3: null では属性そのものを削除する（空文字を置かない）。 */
+  private updateSituation(state: GameState): void {
+    const situation = matchSituation(state.scP, state.scA);
+    if (situation === null) {
+      delete document.body.dataset.situation;
+      this.situation.hidden = true;
+      this.situation.textContent = "";
+      return;
+    }
+    document.body.dataset.situation = situation;
+    this.situation.textContent = SITUATION_LABELS[situation];
+    this.situation.hidden = false;
+  }
+
+  /**
+   * v0.3.0 §5.9.1: 表示条件が真のときだけ置き、偽では削除する。
+   * `updateHud()` と `updateServeControls()` の両方からこの関数で更新する。
+   * phase が "serve" の間 ball.live は必ず false なので、Renderer 側の
+   * `serveZoneVisible()`（!ball.live を含む）と同じ結果になる。
+   */
+  private updateServeZoneAttribute(state: GameState): void {
+    const visible =
+      state.phase === "serve" && state.server === "P" && !state.paused;
+    if (visible) {
+      document.body.dataset.serveZone = state.selectedServeLength;
+    } else {
+      delete document.body.dataset.serveZone;
+    }
+  }
+
+  /** v0.3.0 §5.8.4: 240Hz の updateHud() で連打しないようエッジ検出にする。 */
+  private applyHudPulses(state: GameState): void {
+    const next: HudSnapshot = {
+      scP: state.scP,
+      scA: state.scA,
+      rally: state.rally,
+    };
+    const pulses = hudPulseEvents(this.hudPrev, next);
+    this.hudPrev = next;
+    if (!this.policy.hudPulse) {
+      return;
+    }
+    for (const pulse of pulses) {
+      if (pulse === "score-P") this.pulse(this.playerScoreCard);
+      if (pulse === "score-A") this.pulse(this.opponentScoreCard);
+      if (pulse === "rally") this.pulse(this.rally);
+    }
+  }
+
+  private pulse(element: HTMLElement): void {
+    const existing = this.pulseTimers.get(element);
+    if (existing !== undefined) {
+      window.clearTimeout(existing);
+      this.pulseTimers.delete(element);
+    }
+    element.classList.remove("pulse");
+    requestAnimationFrame(() => {
+      element.classList.add("pulse");
+      this.pulseTimers.set(
+        element,
+        window.setTimeout(() => {
+          element.classList.remove("pulse");
+          this.pulseTimers.delete(element);
+        }, SCORE_PULSE_MS),
+      );
+    });
+  }
+
+  /** §5.11.1: Ui も effectPolicy() の結果に従う。 */
+  public setReducedMotion(reduced: boolean): void {
+    this.policy = effectPolicy(reduced);
+  }
+
+  /** v0.3.0 §5.1.4: 停止中は装飾アニメーションを静止させる。 */
+  public setSuspended(suspended: boolean): void {
+    if (suspended) {
+      document.body.dataset.suspended = "true";
+    } else {
+      delete document.body.dataset.suspended;
+    }
+  }
+
+  /**
+   * v0.3.0 §5.8.2: 得点者と理由を文字で示す。最終得点は RESULT_DELAY_MS = 1000ms
+   * より前に消えるよう 0.95s とする（RESULT_DELAY_MS は変えない）。
+   */
+  public showPointBanner(
+    winner: Side,
+    reason: string,
+    isFinal: boolean,
+  ): void {
+    const text = pointBannerText(winner, reason);
+    this.pointBannerTitle.textContent = text.title;
+    this.pointBannerDetail.textContent = text.detail;
+    this.pointBanner.style.color = winner === "P" ? "#7ee0a8" : "#ff8a6b";
+    this.pointBanner.style.opacity = "1";
+    this.bannerTime = isFinal ? POINT_BANNER_FINAL_SEC : POINT_BANNER_SEC;
+    // バナー表示中はトーストを出さない。
+    this.flashTime = 0;
+    this.flashElement.style.opacity = "0";
   }
 
   public updateLevelSelection(level: LevelId): void {
@@ -262,6 +417,7 @@ export class Ui {
   public updateServeControls(state: GameState): void {
     const visible =
       state.phase === "serve" && state.server === "P" && !state.paused;
+    this.updateServeZoneAttribute(state);
     this.serveControls.hidden = !visible;
     document
       .querySelectorAll<HTMLButtonElement>("[data-serve-type]")
@@ -284,6 +440,9 @@ export class Ui {
   }
 
   public flash(text: string, color = "#e8eef3", duration = 0.8): void {
+    if (this.bannerTime > 0) {
+      return;
+    }
     this.flashElement.textContent = text;
     this.flashElement.style.color = color;
     this.flashElement.style.opacity = "1";
@@ -291,6 +450,12 @@ export class Ui {
   }
 
   public tickFlash(dt: number): void {
+    if (this.bannerTime > 0) {
+      this.bannerTime -= dt;
+      this.pointBanner.style.opacity = String(
+        Math.max(0, Math.min(1, this.bannerTime * 3.2)),
+      );
+    }
     if (this.flashTime <= 0) {
       return;
     }
@@ -311,15 +476,29 @@ export class Ui {
   }
 
   public showGame(): void {
+    this.resetHudBaseline();
     this.title.classList.remove("show");
     this.result.classList.remove("show");
     this.pauseOverlay.classList.remove("show");
   }
 
   public showTitle(): void {
+    this.resetHudBaseline();
     this.result.classList.remove("show");
     this.pauseOverlay.classList.remove("show");
     this.title.classList.add("show");
+  }
+
+  /** 11-9 → 0-0 の遷移でパルスを出さないための基準初期化（§5.8.4）。 */
+  private resetHudBaseline(): void {
+    this.hudPrev = { scP: 0, scA: 0, rally: 0 };
+    this.bannerTime = 0;
+    this.pointBanner.style.opacity = "0";
+    for (const [element, timer] of this.pulseTimers) {
+      window.clearTimeout(timer);
+      element.classList.remove("pulse");
+    }
+    this.pulseTimers.clear();
   }
 
   public showPause(state: GameState): void {
@@ -339,6 +518,7 @@ export class Ui {
     this.resultSub.textContent = playerWon
       ? `あいて：${state.levelConfig.name} を破りました`
       : `${state.levelConfig.name} に届かず`;
+    this.resultMaxRally.textContent = `最長ラリー ${state.maxRally}`;
     this.resultSeq = matchSeq;
     this.resultRecordElement.textContent = formatResultRecordText(
       this.resultRecord,

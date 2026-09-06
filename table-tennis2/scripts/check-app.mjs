@@ -46,6 +46,9 @@ for (const elementId of [
   "players",
   "stats",
   "rRecord",
+  "pointBanner",
+  "situation",
+  "rMaxRally",
 ]) {
   if (!new RegExp(`\\bid="${elementId}"`, "u").test(html)) {
     fail(`index.html に戦績UIの #${elementId} がありません。`);
@@ -121,6 +124,14 @@ for (const sourcePath of [
   "src/control/contact.ts",
   "src/control/shot-intent.ts",
   "src/render-guide.ts",
+  "src/render/theme.ts",
+  "src/render/layers.ts",
+  "src/render/environment.ts",
+  "src/render/table.ts",
+  "src/render/actors.ts",
+  "src/render/effects-draw.ts",
+  "src/view/effects.ts",
+  "src/view/hud-text.ts",
   "src/ui/feature.ts",
   "src/ui/features/match-context.ts",
   "src/ui/features/serve-panel.ts",
@@ -150,6 +161,74 @@ for (const [name, expected] of [
     fail(`src/config.ts の ${name} をv0.2.3設計値 ${expected} に合わせてください。`);
   }
 }
+// v0.3.0 §5.12: グラフィック強化と演出の定数を固定する。
+for (const [name, expected] of [
+  ["VISUAL_EVENT_BUFFER", "16"],
+  ["EFFECT_MAX_PARTICLES", "48"],
+  ["CONTACT_SPARK_TTL_SEC", "0.28"],
+  ["EFFECT_GRAVITY", "600"],
+  ["BOUNCE_RING_TTL_SEC", "0.32"],
+  ["NET_WOBBLE_SEC", "0.36"],
+  ["NET_WOBBLE_AMP", "1.5"],
+  ["NET_WOBBLE_HZ", "14"],
+  ["NET_WOBBLE_DECAY_SEC", "0.12"],
+  ["SMASH_STREAK_SEC", "0.18"],
+  ["DEAD_BALL_HOLD_SEC", "0.5"],
+  ["DEAD_BALL_FADE_SEC", "0.75"],
+  ["SHOT_TOAST_SEC", "0.9"],
+  ["SHOT_TOAST_SMASH_SEC", "1.1"],
+  ["POINT_BANNER_SEC", "1.1"],
+  ["POINT_BANNER_FINAL_SEC", "0.95"],
+  ["SCORE_PULSE_MS", "420"],
+  ["RALLY_PULSE_EVERY", "5"],
+  ["SPIN_TINT_THRESHOLD", "0.25"],
+  ["SERVE_ZONE_PAD", "6"],
+  ["OPPONENT_LEAN_GAIN", "0.08"],
+  ["OPPONENT_LEAN_MAX", "6"],
+  ["EFFECT_DT_MAX_SEC", "0.25"],
+]) {
+  if (
+    !new RegExp(
+      `export const ${name} = ${expected.replace(".", "\\.")};`,
+      "u",
+    ).test(configSource)
+  ) {
+    fail(`src/config.ts の ${name} をv0.3.0設計値 ${expected} に合わせてください。`);
+  }
+}
+// N-5: 既存のタイミング契約は変えない。
+for (const [name, expected] of [
+  ["POINT_INTERVAL", "1.25"],
+  ["RESULT_DELAY_MS", "1000"],
+  ["TRAIL_LENGTH", "9"],
+  ["AI_SERVE_DELAY_MS", "700"],
+]) {
+  if (
+    !new RegExp(
+      `export const ${name} = ${expected.replace(".", "\\.")};`,
+      "u",
+    ).test(configSource)
+  ) {
+    fail(`src/config.ts の ${name} は N-5 により ${expected} のままにしてください。`);
+  }
+}
+if (!/export const SERVE_ZONE_Z:/u.test(configSource)) {
+  fail("src/config.ts に測定済みの SERVE_ZONE_Z がありません（§5.9.2）。");
+}
+const serveZoneBlock = /export const SERVE_ZONE_Z:[\s\S]*?\n\};/u.exec(
+  configSource,
+)?.[0];
+for (const length of ["short", "middle", "long"]) {
+  if (
+    !serveZoneBlock ||
+    !new RegExp(`${length}: \\[-?\\d+(\\.\\d+)?, -?\\d+(\\.\\d+)?\\]`, "u").test(
+      serveZoneBlock,
+    )
+  ) {
+    fail(`src/config.ts の SERVE_ZONE_Z.${length} に測定値を入れてください。`);
+  }
+}
+
 // v0.2.4: 難易度別プロファイル15値とAI blunder確率を固定する。
 // 正規表現を使わず、"  <level>: {" 〜 "  }," のブロックを文字列で切り出して照合する。
 function levelBlock(source, declaration, level) {
@@ -194,24 +273,91 @@ if (configSource.includes("CONTACT_VISUAL_ASSIST")) {
   fail("一律CONTACT_VISUAL_ASSISTをpointer別assistへ置き換えてください。");
 }
 
-const renderSource = await read("src/render.ts");
-const drawPlayerPaddle = /private drawPlayerPaddle\(\): void \{[\s\S]*?\n {2}\}/u
-  .exec(renderSource)?.[0];
+const gameSource = await read("src/game.ts");
+
+// v0.3.0: 作画は src/render/actors.ts へ移設したが、判定共有の式は変えない（N-3）。
+const actorsSource = await read("src/render/actors.ts");
+const drawPlayerPaddle =
+  /export function drawPlayerPaddle\([\s\S]*?\n\}/u.exec(actorsSource)?.[0];
 if (!drawPlayerPaddle) {
-  fail("src/render.ts の drawPlayerPaddle() を検出できません。");
+  fail("src/render/actors.ts の drawPlayerPaddle() を検出できません。");
 }
-if (!drawPlayerPaddle.includes("this.project(player.x, 0, player.z)")) {
+if (!drawPlayerPaddle.includes("projectOn(surface, player.x, 0, player.z)")) {
   fail(
     "drawPlayerPaddle() は横位置を判定平面 player.z で投影してください。",
   );
 }
-if (/project\([^)]*viewZ/u.test(drawPlayerPaddle)) {
+if (/project[A-Za-z]*\([^)]*viewZ/u.test(drawPlayerPaddle)) {
   fail(
     "drawPlayerPaddle() は横位置の投影に viewZ を使わないでください。",
   );
 }
+for (const shared of [
+  "paddleScreenRadius(",
+  "clampPaddleScreenY(",
+  "paddleShadowY(",
+  "PADDLE_BLADE_SCALE * assist.scale",
+]) {
+  if (!drawPlayerPaddle.includes(shared)) {
+    fail(
+      `drawPlayerPaddle() の判定共有の式 ${shared} を変えないでください（N-3）。`,
+    );
+  }
+}
 
-const gameSource = await read("src/game.ts");
+// v0.3.0 N-1: view 層のエフェクトは乱数生成器へ触れない。
+for (const modulePath of [
+  "src/view/effects.ts",
+  "src/view/hud-text.ts",
+  "src/render.ts",
+  "src/render/theme.ts",
+  "src/render/layers.ts",
+  "src/render/environment.ts",
+  "src/render/table.ts",
+  "src/render/actors.ts",
+  "src/render/effects-draw.ts",
+]) {
+  const moduleSource = await read(modulePath);
+  if (/Math\.random/u.test(moduleSource)) {
+    fail(`${modulePath} は Math.random を参照しないでください（N-1）。`);
+  }
+  if (/this\.random/u.test(moduleSource)) {
+    fail(`${modulePath} は Game.random を参照しないでください（N-1）。`);
+  }
+}
+const rendererSource = await read("src/render.ts");
+if (!/mulberry32\(EFFECT_SEED\)/u.test(rendererSource)) {
+  fail("Renderer はエフェクト用に固定seedの mulberry32 を使ってください（N-1）。");
+}
+
+// v0.3.0 N-6: RenderScene は非破壊。イベントは drainVisualEvents() だけが消費する。
+const typesSource = await read("src/types.ts");
+const renderSceneBlock = /export interface RenderScene \{[\s\S]*?\n\}/u.exec(
+  typesSource,
+)?.[0];
+if (!renderSceneBlock) {
+  fail("src/types.ts の RenderScene を検出できません。");
+}
+for (const forbidden of ["random", "events", "visualEvents"]) {
+  if (new RegExp(`\\n\\s+${forbidden}[?:]`, "u").test(renderSceneBlock ?? "")) {
+    fail(`RenderScene に ${forbidden} を載せないでください（N-1 / N-6）。`);
+  }
+}
+if (!/export type VisualEvent =/u.test(typesSource)) {
+  fail("src/types.ts に VisualEvent がありません（§5.1.3）。");
+}
+if (!/public drainVisualEvents\(\): VisualEvent\[\]/u.test(gameSource)) {
+  fail("src/game.ts に drainVisualEvents() がありません（N-6）。");
+}
+const getRenderScene = /public getRenderScene\(\): RenderScene \{[\s\S]*?\n {2}\}/u
+  .exec(gameSource)?.[0];
+if (!getRenderScene) {
+  fail("src/game.ts の getRenderScene() を検出できません。");
+}
+if (/splice\(|\.length = 0/u.test(getRenderScene ?? "")) {
+  fail("getRenderScene() は非破壊にしてください（N-6）。");
+}
+
 if (!gameSource.includes("this.directPaddle.advanceFrame(")) {
   fail("Game loopはfixed step前にdirect paddleのadvanceFrame()を呼んでください。");
 }

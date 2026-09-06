@@ -416,3 +416,75 @@ export const AI_CHOP_SPIN_MAX = -0.35;
 export const AI_CHOP_MAX_Y = 14;
 
 export const FIXED_STEP = 1 / 240;
+
+// ---------------------------------------------------------------------------
+// v0.3.0 §5.12: グラフィック強化と演出の定数。既存の物理・操作定数は変更しない。
+// 色は src/render/theme.ts、純粋ロジックは src/view/effects.ts / hud-text.ts。
+// ---------------------------------------------------------------------------
+
+/** VisualEvent バッファの上限。超過時は最古を捨てる。 */
+export const VISUAL_EVENT_BUFFER = 16;
+/** 生存粒子の上限。超過時は最古を捨てる。 */
+export const EFFECT_MAX_PARTICLES = 48;
+/** 接触スパークの個数（passive PUSH / それ以外 / SMASH）。 */
+export const CONTACT_SPARK_COUNT = {
+  passive: 6,
+  active: 10,
+  smash: 16,
+} as const;
+/** 接触スパークの初速レンジ cm/s。 */
+export const CONTACT_SPARK_SPEED: readonly [number, number] = [120, 260];
+export const CONTACT_SPARK_TTL_SEC = 0.28;
+/** 粒子に掛かる重力 cm/s^2。 */
+export const EFFECT_GRAVITY = 600;
+export const BOUNCE_RING_TTL_SEC = 0.32;
+/** バウンドリングの半径 cm（開始 → 終了）。 */
+export const BOUNCE_RING_RADIUS: readonly [number, number] = [4, 18];
+export const NET_WOBBLE_SEC = 0.36;
+export const NET_WOBBLE_AMP = 1.5;
+export const NET_WOBBLE_HZ = 14;
+export const NET_WOBBLE_DECAY_SEC = 0.12;
+export const SMASH_STREAK_SEC = 0.18;
+/** 死球の保持時間と減衰時間（合計 1.25s。POINT_INTERVAL は参照しない）。 */
+export const DEAD_BALL_HOLD_SEC = 0.5;
+export const DEAD_BALL_FADE_SEC = 0.75;
+/** 打球トーストの表示時間。 */
+export const SHOT_TOAST_SEC = 0.9;
+export const SHOT_TOAST_SMASH_SEC = 1.1;
+/** 得点バナーの表示時間。最終得点は RESULT_DELAY_MS より前に消す。 */
+export const POINT_BANNER_SEC = 1.1;
+export const POINT_BANNER_FINAL_SEC = 0.95;
+/** 得点・ラリーのパルス継続時間 ms。 */
+export const SCORE_PULSE_MS = 420;
+/** ラリー節目のパルス間隔。 */
+export const RALLY_PULSE_EVERY = 5;
+/** 回転色分けのしきい値。 */
+export const SPIN_TINT_THRESHOLD = 0.25;
+/** 接触品質ラベルの境界（ジャスト / ナイス / OK）。 */
+export const CONTACT_QUALITY_LABEL_THRESHOLDS: readonly [
+  number,
+  number,
+  number,
+] = [0.9, 0.75, 0.6];
+/** サーブ着地帯（目安）の余白 cm。 */
+export const SERVE_ZONE_PAD = 6;
+/**
+ * §5.9.2: サーブ着地帯（目安）の z 範囲。`scripts/measure-serve-zones.mjs` の
+ * 実入力 envelope（player.x ±104 を8刻み × flick.vx ±7.2 の11点 × 9球種 × 3長さ）
+ * 測定値を転記した確定値。単体テスト U-V8 が一致を固定する。
+ * `findServeSolution()` は解けない入力で aim → 0、length → middle へ fallback するため、
+ * 表示した長さと実際のサーブ長は一致しないことがある（帯は**目安**）。
+ */
+export const SERVE_ZONE_Z: Record<
+  ServeLength,
+  readonly [number, number]
+> = {
+  short: [10.58, 51.26],
+  middle: [14.1, 108.66],
+  long: [43.44, 134],
+};
+/** 相手の構えの傾き。描画のみで判定には影響しない。 */
+export const OPPONENT_LEAN_GAIN = 0.08;
+export const OPPONENT_LEAN_MAX = 6;
+/** 停止からの復帰直後に丸める dt の上限 s。 */
+export const EFFECT_DT_MAX_SEC = 0.25;

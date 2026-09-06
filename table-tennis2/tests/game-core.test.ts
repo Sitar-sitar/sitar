@@ -32,6 +32,7 @@ import {
   chooseWeightedServe,
   isGameOver,
   isShortBall,
+  matchSituation,
   opponentOf,
   resolveMiss,
   rotateServerAfterPoint,
@@ -1315,4 +1316,18 @@ test("11点以上かつ2点差でのみゲーム終了する", () => {
   assert.equal(isGameOver(10, 8), false);
   assert.equal(isGameOver(11, 10), false);
   assert.equal(isGameOver(12, 10), true);
+});
+
+// v0.3.0 §9.2 U-V4: 状況チップの判定表
+test("U-V4: matchSituation()がデュースとマッチポイントを判定する", () => {
+  assert.equal(matchSituation(10, 10), "deuce");
+  assert.equal(matchSituation(11, 11), "deuce");
+  assert.equal(matchSituation(10, 9), "match-point-P");
+  assert.equal(matchSituation(9, 10), "match-point-A");
+  assert.equal(matchSituation(11, 10), "match-point-P");
+  assert.equal(matchSituation(10, 11), "match-point-A");
+  assert.equal(matchSituation(12, 10), null);
+  assert.equal(matchSituation(9, 9), null);
+  assert.equal(matchSituation(10, 8), "match-point-P");
+  assert.equal(matchSituation(8, 10), "match-point-A");
 });

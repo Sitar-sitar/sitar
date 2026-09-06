@@ -686,6 +686,33 @@ test("AIサーブから自動でラリーが始まる", async ({ page }) => {
     "rally",
     { timeout: 3000 },
   );
+
+  // E-V2: 得点で #pointBanner が出て、増えた側の得点バッジにパルスが付く。
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-phase",
+    "point",
+    { timeout: 15_000 },
+  );
+  await expect(page.locator("#pointBanner")).toContainText("の得点");
+  await expect(page.locator("#opponentScoreCard")).toHaveClass(/pulse/u);
+});
+
+test("E-V2': reduced-motionでは得点バッジにパルスを付けない", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(() => {
+    Math.random = () => 0.6;
+  });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  await expect(page.locator("body")).toHaveAttribute("data-motion", "reduced");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-phase",
+    "point",
+    { timeout: 15_000 },
+  );
+  await expect(page.locator("#pointBanner")).toContainText("の得点");
+  await expect(page.locator("#opponentScoreCard")).not.toHaveClass(/pulse/u);
 });
 
 test("合成pointer入力でdirect paddleが実衝突して返球する", async ({ page }) => {
@@ -774,6 +801,14 @@ test("合成pointer入力でdirect paddleが実衝突して返球する", async 
   expect(observed.screenQuality).toBeGreaterThanOrEqual(0);
   expect(observed.timingQuality).toBeGreaterThanOrEqual(0);
   expect(observed.contactQuality).toBeGreaterThanOrEqual(0.4);
+
+  // E-V1: direct 経路のトーストは「打球名・品質ラベル」の形式になる。
+  // 瞬間表示の観測は Chromium 責務（Obsidian注意点23）。
+  if (test.info().project.name === "desktop-chromium") {
+    await expect(page.locator("#flash")).toHaveText(
+      /・(ジャスト|ナイス|OK|ギリギリ)$/u,
+    );
+  }
 });
 
 test("touch release後160ms超の迎球はpassive PUSHになりguideを消費する", async ({ page }) => {
@@ -900,4 +935,309 @@ test("縦画面を停止し横画面へ戻すと操作できる", async ({ page 
   const controls = page.locator("#serveControls");
   await expect(controls).toBeVisible();
   await expectServeControlsWithinRightRail(page);
+});
+
+// --- v0.3.0 §9.3: グラフィック強化と演出のE2E ---
+
+/** 合成pointer入力でdirect接触を起こし、その間の data-particles-live の最大値を返す。 */
+async function driveSyntheticContact(page, frames = 360) {
+  return page.evaluate(async (maxFrames) => {
+    const canvas = document.querySelector("#cv");
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error("#cv が見つかりません。");
+    }
+    const dispatch = (type, init) => {
+      canvas.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          isPrimary: true,
+          pointerType: "touch",
+          ...init,
+        }),
+      );
+    };
+    const pointerId = 1;
+    const firstRect = canvas.getBoundingClientRect();
+    let maxParticles = 0;
+    let sawContact = false;
+    let framesAfterContact = 0;
+    dispatch("pointerdown", {
+      pointerId,
+      clientX: firstRect.left + firstRect.width / 2,
+      clientY: firstRect.top + firstRect.height * 0.72,
+      buttons: 1,
+    });
+    for (let frame = 0; frame < maxFrames; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const live = Number(document.body.dataset.particlesLive ?? 0);
+      if (Number.isFinite(live)) maxParticles = Math.max(maxParticles, live);
+      if (sawContact) framesAfterContact += 1;
+      sawContact ||= Boolean(document.body.dataset.directShot);
+      // 接触後も粒子寿命 0.28s ぶんを観測してから止める。
+      if (framesAfterContact > 20) break;
+      const rect = canvas.getBoundingClientRect();
+      const ballX = Number(document.body.dataset.ballScreenX);
+      const ballY = Number(document.body.dataset.ballScreenY);
+      if (!Number.isFinite(ballX) || !Number.isFinite(ballY)) continue;
+      dispatch("pointermove", {
+        pointerId,
+        clientX: rect.left + Math.max(1, Math.min(rect.width - 1, ballX)),
+        clientY:
+          rect.top +
+          Math.max(1, Math.min(rect.height - 1, ballY + rect.height * 0.06)),
+        buttons: 1,
+      });
+    }
+    dispatch("pointerup", {
+      pointerId,
+      clientX: firstRect.left + firstRect.width / 2,
+      clientY: firstRect.top + firstRect.height * 0.72,
+      buttons: 0,
+    });
+    return { maxParticles, sawContact };
+  }, frames);
+}
+
+test("E-V3: full/reducedで接触スパークの有無が入れ替わる", async ({ page }) => {
+  // 合成接触を使うため Desktop Chromium のみ（Obsidian注意点23）。
+  test.skip(
+    test.info().project.name !== "desktop-chromium",
+    "合成接触の観測は Desktop Chromium の責務",
+  );
+  await page.addInitScript(() => {
+    const values = [0.6, 0, 0, 0.5, 0.5, 0.5, 0.5];
+    let index = 0;
+    Math.random = () => values[index++] ?? 0.5;
+  });
+
+  await page.goto("/?debugInput=1");
+  await page.locator("#start").click();
+  await expect(page.locator("body")).toHaveAttribute("data-motion", "full");
+  await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+  const full = await driveSyntheticContact(page);
+  expect(full.sawContact).toBe(true);
+  expect(full.maxParticles).toBeGreaterThanOrEqual(1);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/?debugInput=1");
+  await page.locator("#start").click();
+  await expect(page.locator("body")).toHaveAttribute("data-motion", "reduced");
+  await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+  const reduced = await driveSyntheticContact(page);
+  expect(reduced.sawContact).toBe(true);
+  expect(reduced.maxParticles).toBe(0);
+});
+
+test("E-V4: data-serve-zoneはplayer serve時だけ選択長さを反映する", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  await expect(page.locator("body")).toHaveAttribute("data-server", "P");
+  for (const length of ["short", "middle", "long"]) {
+    await page.locator(`[data-serve-length="${length}"]`).click();
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-serve-zone",
+      length,
+    );
+  }
+
+  // 一時停止中は属性が存在しない。
+  await page.locator("#gear").click();
+  await expect(page.locator("body")).not.toHaveAttribute(
+    "data-serve-zone",
+    /./u,
+  );
+  await page.locator("#resume").click();
+  await expect(page.locator("body")).toHaveAttribute("data-serve-zone", "long");
+
+  // サーブ後（ラリー中）は属性が存在しない。
+  await page.locator("#cv").click({ position: { x: 400, y: 260 } });
+  await expect(page.locator("body")).toHaveAttribute("data-phase", "rally");
+  await expect(page.locator("body")).not.toHaveAttribute(
+    "data-serve-zone",
+    /./u,
+  );
+});
+
+test("E-V4': AIサーブ時はdata-serve-zoneが存在しない", async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.6;
+  });
+  await page.goto("/");
+  await page.locator("#start").click();
+  await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+  await expect(page.locator("body")).not.toHaveAttribute(
+    "data-serve-zone",
+    /./u,
+  );
+});
+
+test("E-V5: 状況チップは初期非表示でHUD寸法契約を変えない", async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/");
+  await page.locator("#start").click();
+
+  await expect(page.locator("#situation")).toBeHidden();
+  await expect(page.locator("body")).not.toHaveAttribute(
+    "data-situation",
+    /./u,
+  );
+
+  const observed = await page.evaluate(() => {
+    const pointerEvents = (selector) =>
+      window.getComputedStyle(document.querySelector(selector)).pointerEvents;
+    const rect = (selector) => {
+      const value = document.querySelector(selector).getBoundingClientRect();
+      return { width: value.width, height: value.height };
+    };
+    return {
+      banner: pointerEvents("#pointBanner"),
+      situation: pointerEvents("#situation"),
+      flash: pointerEvents("#flash"),
+      opponent: rect("#opponentScoreCard"),
+      player: rect("#playerScoreCard"),
+      meta: rect("#matchMeta"),
+    };
+  });
+  expect(observed.banner).toBe("none");
+  expect(observed.situation).toBe("none");
+  expect(observed.flash).toBe("none");
+  // v0.1.1 の寸法契約（wide: 92×48 / 132×28）を維持する。
+  expect(observed.opponent.width).toBeLessThanOrEqual(92);
+  expect(observed.opponent.height).toBeLessThanOrEqual(48);
+  expect(observed.player.width).toBeLessThanOrEqual(92);
+  expect(observed.player.height).toBeLessThanOrEqual(48);
+  expect(observed.meta.width).toBeLessThanOrEqual(132);
+  expect(observed.meta.height).toBeLessThanOrEqual(28);
+});
+
+test("E-V6: 最終得点でもバナーと死球が出てリザルトへ遷移する", async ({
+  page,
+}) => {
+  test.skip(
+    test.info().project.name !== "desktop-chromium",
+    "所要時間のため Desktop Chromium のみ",
+  );
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    Math.random = () => 0.6;
+  });
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/?debugInput=1");
+  await page.locator("#start").click();
+
+  // 返球はせず、自分のサーブ順のときだけ台をタップして試合を進め、決着まで持っていく。
+  // （AIサーブの放置だけでは2点でサーブ権がプレイヤーへ移り試合が止まる。）
+  const deadline = Date.now() + 120_000;
+  let phase = "";
+  while (Date.now() < deadline) {
+    phase = await page.evaluate(() => document.body.dataset.phase ?? "");
+    if (phase === "over") break;
+    if (
+      phase === "serve" &&
+      (await page.evaluate(() => document.body.dataset.server)) === "P"
+    ) {
+      await page.locator("#cv").click({ position: { x: 400, y: 260 } });
+    }
+    await page.waitForTimeout(120);
+  }
+  expect(phase).toBe("over");
+  const scores = await page.evaluate(() => ({
+    player: Number(document.querySelector("#scP").textContent),
+    opponent: Number(document.querySelector("#scA").textContent),
+  }));
+  expect(Math.max(scores.player, scores.opponent)).toBeGreaterThanOrEqual(11);
+
+  // 最終得点でもバナーと死球が出る（phase は既に over）。
+  await expect(page.locator("#pointBanner")).toContainText("の得点");
+  await expect(page.locator("body")).toHaveAttribute("data-dead-ball", "1");
+  await expect(page.locator("#result")).toHaveClass(/show/u, {
+    timeout: 4000,
+  });
+  await expect(page.locator("#rMaxRally")).toContainText("最長ラリー");
+  // 死球は寿命で必ず消え、over のまま永続しない。
+  await expect(page.locator("body")).toHaveAttribute("data-dead-ball", "0", {
+    timeout: 4000,
+  });
+});
+
+test("E-V7: 一時停止中は視覚時計が止まり情報表示が保持される", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.6;
+  });
+  await page.goto("/?debugInput=1");
+  await page.locator("#start").click();
+  await expect(page.locator("body")).toHaveAttribute("data-phase", "point", {
+    timeout: 15_000,
+  });
+
+  await page.locator("#gear").click();
+  await expect(page.locator("body")).toHaveAttribute("data-suspended", "true");
+  const before = await page.evaluate(() => ({
+    simTime: document.body.dataset.effectsSimTime,
+    bannerOpacity: document.querySelector("#pointBanner").style.opacity,
+  }));
+  await page.waitForTimeout(1_200);
+  const after = await page.evaluate(() => ({
+    simTime: document.body.dataset.effectsSimTime,
+    bannerOpacity: document.querySelector("#pointBanner").style.opacity,
+  }));
+  expect(after.simTime).toBe(before.simTime);
+  expect(after.bannerOpacity).toBe(before.bannerOpacity);
+
+  await page.locator("#resume").click();
+  await expect(page.locator("body")).not.toHaveAttribute(
+    "data-suspended",
+    /./u,
+  );
+  await page.waitForTimeout(600);
+  const resumed = await page.evaluate(
+    () => document.body.dataset.effectsSimTime,
+  );
+  expect(Number(resumed)).toBeGreaterThan(Number(before.simTime));
+});
+
+test("E-V8: 得点パルスはエッジで1回だけ付与される", async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.6;
+  });
+  await page.goto("/");
+  await page.locator("#start").click();
+  await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+
+  // 同じ得点値でパルスが再付与されないことを数える（得点は約2.8秒間隔で進む）。
+  await page.evaluate(() => {
+    window.__pulseAdds = [];
+    const target = document.querySelector("#opponentScoreCard");
+    let had = target.classList.contains("pulse");
+    new MutationObserver(() => {
+      const has = target.classList.contains("pulse");
+      if (has && !had) {
+        window.__pulseAdds.push(document.querySelector("#scA").textContent);
+      }
+      had = has;
+    }).observe(target, { attributes: true, attributeFilter: ["class"] });
+  });
+
+  await expect(page.locator("body")).toHaveAttribute("data-phase", "point", {
+    timeout: 15_000,
+  });
+  await expect(page.locator("#opponentScoreCard")).toHaveClass(/pulse/u);
+  const firstScore = await page.locator("#scA").textContent();
+  // 600ms 以内に外れる。
+  await expect(page.locator("#opponentScoreCard")).not.toHaveClass(/pulse/u, {
+    timeout: 600,
+  });
+  // 同じ得点値のままなら、その後さらに待っても再付与されない（240Hz の updateHud で連打しない）。
+  await page.waitForTimeout(1_000);
+  const adds = await page.evaluate(() => window.__pulseAdds);
+  expect(adds.filter((score) => score === firstScore)).toHaveLength(1);
 });

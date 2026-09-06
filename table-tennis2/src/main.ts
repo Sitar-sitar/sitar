@@ -81,7 +81,25 @@ let statsPhase: StatsPhase = "loading";
 let selectedPlayerId: string | null = null;
 let selectedPlayer: PlayerRecord | null = null;
 
-const renderer = new Renderer(canvas, () => game.getRenderScene());
+const renderer = new Renderer(
+  canvas,
+  () => game.getRenderScene(),
+  () => game.drainVisualEvents(),
+);
+
+// v0.3.0 §5.11.1: prefers-reduced-motion を body と view 層へ反映する。
+const reducedMotionQuery = window.matchMedia?.(
+  "(prefers-reduced-motion: reduce)",
+);
+function applyMotionPreference(reduced: boolean): void {
+  document.body.dataset.motion = reduced ? "reduced" : "full";
+  renderer.setReducedMotion(reduced);
+  ui.setReducedMotion(reduced);
+}
+applyMotionPreference(reducedMotionQuery?.matches ?? false);
+reducedMotionQuery?.addEventListener("change", (event) => {
+  applyMotionPreference(event.matches);
+});
 const input = new InputController(canvas, {
   onInput: (frame) => game.updatePlayerInput(frame),
   onRelease: (time) => game.releasePlayerInput(time),

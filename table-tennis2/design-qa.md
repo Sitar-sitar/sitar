@@ -75,3 +75,54 @@
 - P3: 打球flashが重なる瞬間の撮影ではHUD比較がしづらいため、将来のvisual regression用fixtureでゲーム時間を固定すると比較しやすい。製品挙動の変更は不要。
 
 final result: passed
+
+---
+
+# Design QA：table-tennis2 v0.3.0 グラフィック強化と演出
+
+- Source visual truth: 設計書 [修正設計書_グラフィック強化と演出完成度向上_2026-09-06](docs/修正設計書_グラフィック強化と演出完成度向上_2026-09-06.md) §5.2〜§5.10 の記述（モック画像はない）
+- Baseline: v0.2.4 の `design-qa/implementation-rally-wide-844x390-v2.jpg`
+- Wide evidence: `design-qa/v030-rally-wide-844x390.jpg` / `v030-serve-wide-844x390.jpg` / `v030-point-wide-844x390.jpg` / `v030-final-point-wide-844x390.jpg`
+- Compact evidence: `design-qa/v030-rally-compact-568x320.jpg` / `v030-serve-compact-568x320.jpg`
+- Viewport / pixels: 844×390 と 568×320 CSS px、devicePixelRatio 1
+- Capture: `node scripts/capture-design-qa.mjs`（production build の `vite preview` を Chromium で撮影。決定論のため `Math.random` を固定）
+- Console: 撮影中の warning / error は 0 件（スクリプトが検出したら異常終了する）
+- Browser: 撮影は Chromium。実 Chrome での手動受入は G2 で別途実施する
+
+## Findings
+
+### P0
+
+なし。
+
+### P1
+
+なし。
+
+### P2
+
+- **相手プレイヤーが台にほぼ隠れる**: 設計 §5.1.2 の描画順（相手は L1 の台より前）と現行カメラの組み合わせでは、相手の可視部分が頭部だけになる場面が多い。相手の接触面 `z` が 30〜178 の範囲を動くのに対し、天板奥端の投影 y は約 107px、相手の胴上端は約 105px であるため、胴・脚・サーブ待ちの球は天板に覆われる。v0.2.4 も同じ描画順であり本版で悪化はしていないが、§5.6 で作り込んだ姿勢・構え・待機揺らぎ・サーブ待ちの球は画面上ほとんど確認できない。描画順を変えると相手が天板の上に乗って見えるため、本版では設計どおりの順序を維持し、判断をユーザーへ回す。
+- **サーブ着地帯が非常に淡い**: 設計値の塗り `rgba(126,224,168,.10)` と縁 `rgba(126,224,168,.35)` 幅 1.5 は、青い天板の上ではスクリーンショット上ほぼ判別できない。Canvas の画素差分では短い／長いで 5743px の差が出ており描画自体は成立している。視認性を上げるには設計値の変更が必要なため、判断をユーザーへ回す。
+- **死球が画面外になる得点がある**: 「返せず」「アウト」でプレイヤー側の床へ落ちた球は、`z` が `-250` 付近まで下がると投影 y が 1000px を超え、viewport の下に出る。ネット・サーブフォルト・自陣に落下など台上・台際で止まる得点では設計どおり残留が見える。投影は `projectScale()` の下限 24 でクランプされるため、破綻や巨大描画は発生しない。
+
+## Required fidelity surfaces
+
+- Fonts and typography: 既存の system UI を維持。打球トーストは 13px（wide 14px）/ 800、得点バナーは 20px（wide 22px）/ 800 と 13px の 2 行、状況チップは 11px。得点 30px・ラベル 11px・中央メタ 11px の v0.1.1 契約は変更していない。
+- Spacing and layout rhythm: 得点バッジ 92×48 / 76×44、中央メタ 132×28 / 112×24、rail 幅は不変（E-V5 で検査）。新規要素はすべて stage 相対で `pointer-events: none`。トーストは `#matchMeta` 直下 54px（wide 60px）、状況チップ表示中は 78px（wide 86px）へ下がる。
+- Colors and visual tokens: 会場を `#1c2128 → #3d454f` の壁と `#6e4d2a → #c49559` の床へ暗色化し、周縁の暗がりと天板中央への放射光を追加した。台は `#17466a → #236a9c`、ネットは `rgba(232,238,244,.26)`。得点者色は緑 `#7ee0a8` / 橙 `#ff8a6b` で、いずれも**文字と併記**する。新しい外部 palette は追加していない。
+- Image quality and asset fidelity: 実行時の新規画像・フォント・音声資産はない。会場・観客・照明・網はすべて Canvas API の手続き描画で、模様の揺らぎはインデックス由来の決定論値（`deterministicUnit()`）で作る。
+- Copy and content: `あなたの得点` / `あいての得点`、5 理由（ネット／アウト／返せず／サーブフォルト／自陣に落下）、`デュース` / `マッチポイント` / `相手マッチポイント`、品質ラベル 4 種、`台をタップ か 左右フリックでサーブ`、`最長ラリー N` を設計正本どおり表示する。
+- Icons: 新規アイコンは追加していない。
+- Responsiveness: 568×320 でも両得点・中央メタ・ヒント pill・サーブ操作が viewport 内に収まる。静的レイヤは `layerKey`（幅×高さ@dpr）が変わったときだけ再生成する。
+- Accessibility and interaction: 得点者・品質・状況は**文字**で示し、色は補助。`#pointBanner` / `#situation` は `aria-live="polite"`。`prefers-reduced-motion: reduce` では粒子・集中線・ネット揺れ・パルス・待機揺らぎ・グロー脈動を止め、情報表示は残す（U-V11 / E-V3 / E-V2'）。
+
+## Comparison history
+
+| 版 | 証跡 | 結果 |
+|---|---|---|
+| v0.3.0（本版） | `v030-*.jpg` 6 枚 | P0 / P1 差異なし。P2 3 件を記録し、いずれも設計値・設計順序を維持したままユーザー判断へ回す |
+| v0.2.4 以前 | `implementation-*.jpg` | 上記 v0.1.1 節を参照 |
+
+## 実装中に発見し是正した描画欠陥
+
+- **柵と観客帯が床に隠れた**: `drawFloor()` は地平線から画面下端まで塗るが、横画面（844×390）では地平線 `camera.cy ≈ -20.5px` が viewport 上端より上に来るため、床の塗りが画面全体を覆う。初回実装では設計 §5.2 の記述順（観客帯 → 柵 → 床）どおりに描いたため、柵と観客帯が消えた。床を先に描く順序へ是正した（観客帯が柵の後ろに来る前後関係は維持）。

@@ -39,7 +39,12 @@ export default [
     },
   },
   {
-    files: ["tests/**/*.js"],
+    // page.evaluate() / addInitScript() でブラウザ内へ注入する関数を含むファイル。
+    files: [
+      "tests/**/*.js",
+      "scripts/measure-render-perf.mjs",
+      "scripts/capture-design-qa.mjs",
+    ],
     languageOptions: {
       globals: {
         ...globals.browser,

@@ -11,6 +11,7 @@ import {
 import type {
   Flick,
   LevelId,
+  MatchSituation,
   ServeLength,
   ServeType,
   ShotId,
@@ -162,4 +163,27 @@ export function isGameOver(
   const high = Math.max(playerScore, opponentScore);
   const low = Math.min(playerScore, opponentScore);
   return high >= 11 && high - low >= 2;
+}
+
+/**
+ * v0.3.0 §5.8.3: 試合状況チップの判定。型は types.ts、実装はここに置く。
+ * 既存関数は変更しない。
+ */
+export function matchSituation(
+  playerScore: number,
+  opponentScore: number,
+): MatchSituation {
+  if (isGameOver(playerScore, opponentScore)) {
+    return null;
+  }
+  if (playerScore >= 10 && opponentScore >= 10 && playerScore === opponentScore) {
+    return "deuce";
+  }
+  if (isGameOver(playerScore + 1, opponentScore)) {
+    return "match-point-P";
+  }
+  if (isGameOver(playerScore, opponentScore + 1)) {
+    return "match-point-A";
+  }
+  return null;
 }

@@ -26,8 +26,11 @@ import {
   SMASH_CHECK_INTERVAL,
   SMASH_MIN_Y,
   SMASH_REACH_MARGIN,
+  SHOT_TOAST_SEC,
+  SHOT_TOAST_SMASH_SEC,
   SWING_DECAY,
   TRAIL_LENGTH,
+  VISUAL_EVENT_BUFFER,
 } from "./config.ts";
 import { Feedback } from "./feedback.ts";
 import { sweptPaddleContact } from "./control/contact.ts";
@@ -75,8 +78,11 @@ import type {
   ServeType,
   ShotId,
   Side,
+  VisualEvent,
 } from "./types.ts";
 import { Ui } from "./ui.ts";
+import { pushBounded } from "./view/effects.ts";
+import { contactQualityLabel } from "./view/hud-text.ts";
 import { isSuspended } from "./view/suspension.ts";
 import { createProjectionCamera, projectWorldPoint } from "./view/projection.ts";
 import {
@@ -135,6 +141,8 @@ export class Game {
 
   private readonly ai: OpponentAi;
   private readonly trail: Pick<BallVector, "x" | "y" | "z">[] = [];
+  /** v0.3.0 §5.1.3: Renderer だけが drainVisualEvents() で消費する視覚イベント列。 */
+  private readonly visualEvents: VisualEvent[] = [];
   private mark: Mark | null = null;
   private playerContactGuide: PlayerContactGuide | null = null;
   private lastDirectContactQuality: Pick<
@@ -282,6 +290,22 @@ export class Game {
     };
   }
 
+  /**
+   * v0.3.0 §5.1.3 / N-6: 蓄積した視覚イベントを返して空にする。
+   * `getRenderScene()` は非破壊のままとし、消費はこのAPIだけが行う。
+   * 呼び出し元は Renderer だけ。
+   */
+  public drainVisualEvents(): VisualEvent[] {
+    if (this.visualEvents.length === 0) {
+      return [];
+    }
+    return this.visualEvents.splice(0, this.visualEvents.length);
+  }
+
+  private emitVisualEvent(event: VisualEvent): void {
+    pushBounded(this.visualEvents, event, VISUAL_EVENT_BUFFER);
+  }
+
   public updatePlayerInput(frame: InputFrame): void {
     if (this.isSuspended()) return;
     if (this.controlModel === "legacy") {
@@ -379,7 +403,8 @@ export class Game {
       this.accumulator = plan.nextAccumulator;
     }
 
-    this.ui.tickFlash(plan.frameDelta);
+    // v0.3.0 §5.1.4 系統B: 停止中は情報表示（トースト・バナー）の残り時間を保持する。
+    this.ui.tickFlash(this.isSuspended() ? 0 : plan.frameDelta);
     this.player.swing = Math.max(
       0,
       this.player.swing - plan.frameDelta * SWING_DECAY,
@@ -593,6 +618,7 @@ export class Game {
     this.state.paused = true;
     this.suspension.userPaused = true;
     this.input?.reset();
+    this.ui.setSuspended(true);
     this.ui.showPause(this.state);
     this.ui.updateServeControls(this.state);
     this.ui.syncToggles(this.state);
@@ -606,6 +632,7 @@ export class Game {
     this.suspension.userPaused = false;
     this.lastFrame = 0;
     this.accumulator = 0;
+    this.ui.setSuspended(this.isSuspended());
     this.ui.hidePause();
     this.ui.updateServeControls(this.state);
     this.resumeAfterSuspension();
@@ -620,6 +647,7 @@ export class Game {
     this.playerContactGuide = null;
     this.lastDirectContactQuality = null;
     this.input?.reset();
+    this.ui.setSuspended(this.isSuspended());
     this.ui.showTitle();
     this.ui.hint([]);
     this.ui.updateHud(this.state);
@@ -660,13 +688,9 @@ export class Game {
     this.ball.side = 0;
     this.ball.lastBounceZ = null;
     this.state.rally = 0;
+    // v0.3.0 §5.8.5: 1行の pill に収める。
     this.ui.hint(
-      playerServes
-        ? [
-            "サーブを選び、台上を左右にフリック",
-            "またはタップしてサーブ",
-          ]
-        : [],
+      playerServes ? ["台をタップ か 左右フリックでサーブ"] : [],
     );
     this.ui.updateHud(this.state);
     this.ui.updateServeControls(this.state);
@@ -727,6 +751,7 @@ export class Game {
     const wasSuspended = this.isSuspended();
     this.suspension[reason] = active;
     const nowSuspended = this.isSuspended();
+    this.ui.setSuspended(nowSuspended);
     if (!wasSuspended && nowSuspended) {
       this.cancelServeTimer();
       this.input?.reset();
@@ -864,6 +889,13 @@ export class Game {
     document.body.dataset.servedServeType = resolved.serveType;
     document.body.dataset.servedServeLength = resolved.serveLength;
     this.feedback.hit(0.35);
+    this.emitVisualEvent({
+      kind: "serve",
+      side: who,
+      serveType: resolved.serveType,
+      serveLength: resolved.serveLength,
+      time: this.simulationTime,
+    });
     this.ui.flash(
       `${SERVE_PROFILES[resolved.serveType].label}サーブ（${
         SERVE_LENGTH_PROFILES[resolved.serveLength].label
@@ -926,6 +958,12 @@ export class Game {
       precision: who === "A" ? play.aiPrecision : 1,
     });
 
+    // 視覚イベントの座標は接触時点の実際の球位置（solver へ渡すクランプ後の y ではない）。
+    const contactPoint = {
+      x: this.ball.x,
+      y: this.ball.y,
+      z: this.ball.z,
+    };
     Object.assign(this.ball, from, solution);
     this.ball.hitter = who;
     this.ball.bounces = 0;
@@ -942,6 +980,17 @@ export class Game {
         Math.hypot(solution.vx, solution.vy, solution.vz) / 1500,
       ),
     );
+    this.emitVisualEvent({
+      kind: "contact",
+      side: who,
+      x: contactPoint.x,
+      y: contactPoint.y,
+      z: contactPoint.z,
+      shot: type,
+      passive: false,
+      contactQuality: null,
+      time: this.simulationTime,
+    });
 
     if (who === "P") {
       this.player.swing = 1;
@@ -958,7 +1007,7 @@ export class Game {
           ? "#ffc24b"
           : "#e8eef3"
         : "#9fb0bd",
-      type === "SMASH" ? 1 : 0.7,
+      type === "SMASH" ? SHOT_TOAST_SMASH_SEC : SHOT_TOAST_SEC,
     );
     if (who === "P") {
       this.ai.state.z = this.contactPlane("A");
@@ -1024,6 +1073,12 @@ export class Game {
         this.ball.spin *= 0.3;
         this.ball.side *= 0.3;
         this.feedback.net();
+        this.emitVisualEvent({
+          kind: "net",
+          x,
+          y,
+          time: this.simulationTime,
+        });
         this.point(opponentOf(this.ball.hitter), "ネット");
         return;
       }
@@ -1033,6 +1088,12 @@ export class Game {
       if (onTable(this.ball.x, this.ball.z)) {
         tableBounce(this.ball);
         this.feedback.bounce();
+        this.emitVisualEvent({
+          kind: "bounce",
+          x: this.ball.x,
+          z: this.ball.z,
+          time: this.simulationTime,
+        });
         this.judgeBounce();
         this.planPlayerContactGuideIfNeeded();
       } else {
@@ -1267,6 +1328,11 @@ export class Game {
       return;
     }
 
+    const contactPoint = {
+      x: this.ball.x,
+      y: this.ball.y,
+      z: this.ball.z,
+    };
     Object.assign(this.ball, from, solution);
     this.ball.hitter = "P";
     this.ball.bounces = 0;
@@ -1282,11 +1348,25 @@ export class Game {
     this.feedback.hit(
       Math.min(1, Math.hypot(solution.vx, solution.vy, solution.vz) / 1500),
     );
+    this.emitVisualEvent({
+      kind: "contact",
+      side: "P",
+      x: contactPoint.x,
+      y: contactPoint.y,
+      z: contactPoint.z,
+      shot: intent.classifiedShot,
+      passive: intent.passive,
+      contactQuality: contact.contactQuality,
+      time: this.simulationTime,
+    });
     const shot = SHOTS[intent.classifiedShot];
+    // v0.3.0 §5.8.1: direct 経路だけ打球名の後ろへ接触品質ラベルを付ける。
     this.ui.flash(
-      shot.lab,
+      `${shot.lab}・${contactQualityLabel(contact.contactQuality)}`,
       intent.classifiedShot === "SMASH" ? "#ffc24b" : "#e8eef3",
-      intent.classifiedShot === "SMASH" ? 1 : 0.7,
+      intent.classifiedShot === "SMASH"
+        ? SHOT_TOAST_SMASH_SEC
+        : SHOT_TOAST_SEC,
     );
     this.ai.state.z = this.contactPlane("A");
     this.ai.plan(this.ball, this.simulationTime, this.state.level);
@@ -1344,6 +1424,12 @@ export class Game {
       this.state.scA += 1;
       this.feedback.lose();
     }
+    // 得点判定時の球位置。静止面の決定は Renderer が行う（§5.1.3 / §5.4.4）。
+    const deadBallPoint = {
+      x: this.ball.x,
+      y: this.ball.y,
+      z: this.ball.z,
+    };
     this.ball.live = false;
     this.input?.reset();
     this.mark = null;
@@ -1352,11 +1438,18 @@ export class Game {
     this.smashable = false;
     this.state.phase = "point";
     this.state.pointTimer = POINT_INTERVAL;
-    this.ui.flash(
+    const isFinal = isGameOver(this.state.scP, this.state.scA);
+    this.emitVisualEvent({
+      kind: "point",
+      winner,
       reason,
-      winner === "P" ? "#7ee0a8" : "#ff8a6b",
-      1.1,
-    );
+      scP: this.state.scP,
+      scA: this.state.scA,
+      ball: deadBallPoint,
+      time: this.simulationTime,
+    });
+    // v0.3.0 §5.8.2: 得点理由は #flash ではなく #pointBanner が担う。
+    this.ui.showPointBanner(winner, reason, isFinal);
 
     const rotation = rotateServerAfterPoint(
       this.state.server,
@@ -1369,8 +1462,11 @@ export class Game {
     this.ui.updateHud(this.state);
     this.ui.updateServeControls(this.state);
 
-    if (isGameOver(this.state.scP, this.state.scA)) {
+    if (isFinal) {
       this.state.phase = "over";
+      // 直前の updateHud() は phase が "point" の時点の値を書いている。
+      // over への遷移を DOM（body[data-phase]）へ反映する。パルスはエッジ検出のため再発火しない。
+      this.ui.updateHud(this.state);
       const seq = this.matchSeq;
       this.onMatchEnd?.(this.buildMatchResult());
       window.setTimeout(() => {

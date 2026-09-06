@@ -1,40 +1,57 @@
+// v0.3.0 §5.1: Renderer は「レイヤ管理・描画順・イベント消費・エフェクト状態・debug計測」だけを担う
+// orchestrator。作画は src/render/*.ts、エフェクトの純粋モデルは src/view/effects.ts。
+// カメラは computeCamera() の結果だけを使い、演出由来の加算をしない（N-4）。
 import {
-  BALL_R,
-  FLOOR,
-  HL,
-  HW,
-  NET_H,
-  NET_HW,
-  PADDLE_BLADE_SCALE,
-  PADDLE_HANDLE_INSET,
-  PADDLE_HANDLE_LENGTH,
-  PADDLE_HANDLE_WIDTH,
+  EFFECT_DT_MAX_SEC,
+  OPPONENT_LEAN_GAIN,
+  OPPONENT_LEAN_MAX,
+  SERVE_ZONE_Z,
 } from "./config.ts";
-import { onTable } from "./physics.ts";
-import { playerContactGuideAlpha } from "./render-guide.ts";
-import type { RenderScene, Viewport } from "./types.ts";
-import {
-  clamp,
-  clampPaddleScreenY,
-  paddleDepthRatio,
-  paddleHandleAngle,
-  paddleScreenRadius,
-  paddleScreenY,
-  paddleShadowY,
-} from "./utils.ts";
+import type { RenderScene, Viewport, VisualEvent } from "./types.ts";
+import { clamp, moveToward } from "./utils.ts";
 import { computeCamera } from "./view/camera.ts";
 import {
-  projectWorldPoint,
-  type ProjectedPoint,
-} from "./view/projection.ts";
+  createEffectState,
+  effectPolicy,
+  mulberry32,
+  renderOrder,
+  spawnFromEvent,
+  stepEffects,
+  type EffectPolicy,
+  type EffectState,
+  type RenderStep,
+} from "./view/effects.ts";
+import type { ProjectionCamera } from "./view/projection.ts";
+import { drawOpponent, drawPlayerPaddle } from "./render/actors.ts";
+import {
+  drawBall,
+  drawBallShadow,
+  drawDeadBall,
+  drawDebugStroke,
+  drawEffects,
+  drawMark,
+  drawPlayerContactGuide,
+  drawServeZone,
+  drawTrail,
+} from "./render/effects-draw.ts";
+import { drawEnvironment } from "./render/environment.ts";
+import { LayerCache, type SceneSurface } from "./render/layers.ts";
+import { drawNetMesh, drawTableLayer } from "./render/table.ts";
+
+/** エフェクト乱数の固定 seed。見た目に再現性を持たせる（Game.random には触れない）。 */
+const EFFECT_SEED = 0x9e3779b9;
+const SMASH_GLOW_HZ = 6;
+const OPPONENT_SWAY_HZ = 0.9;
+const OPPONENT_SWAY_AMP = 1.2;
+const OPPONENT_LEAN_SPEED = 6;
+const RENDER_SAMPLE_WINDOW = 60;
 
 export class Renderer {
   private readonly context: CanvasRenderingContext2D;
   private width = 0;
   private height = 0;
   private dpr = 1;
-  private scene: RenderScene | null = null;
-  private readonly camera = {
+  private readonly camera: ProjectionCamera = {
     x: 0,
     y: 190,
     z: -330,
@@ -42,10 +59,19 @@ export class Renderer {
     cx: 0,
     cy: 0,
   };
+  private readonly backdropLayer = new LayerCache();
+  private readonly tableLayer = new LayerCache();
+  private readonly effects: EffectState = createEffectState();
+  private readonly effectRandom = mulberry32(EFFECT_SEED);
+  private policy: EffectPolicy = effectPolicy(false);
+  private lastSimulationTime = 0;
+  private opponentLean = 0;
+  private readonly renderSamples: number[] = [];
 
   public constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly getScene: () => RenderScene,
+    private readonly drainEvents: () => VisualEvent[] = () => [],
   ) {
     const context = canvas.getContext("2d");
     if (!context) {
@@ -62,35 +88,196 @@ export class Renderer {
     return { width: this.width, height: this.height };
   }
 
+  /** §5.11.1: prefers-reduced-motion の反映。 */
+  public setReducedMotion(reduced: boolean): void {
+    this.policy = effectPolicy(reduced);
+  }
+
   public render(): void {
-    this.scene = this.getScene();
+    const started = performance.now();
+    const scene = this.getScene();
+
+    const dt = scene.simulationTime - this.lastSimulationTime;
+    this.lastSimulationTime = scene.simulationTime;
+    stepEffects(this.effects, dt);
+    for (const event of this.drainEvents()) {
+      spawnFromEvent(
+        this.effects,
+        event,
+        scene.simulationTime,
+        this.policy,
+        this.effectRandom,
+      );
+    }
+    // 次のポイントの球が動き出したら死球は消す（§5.4.4）。
+    if (this.effects.deadBall && scene.ball.live) {
+      this.effects.deadBall = null;
+    }
+    this.updateOpponentLean(scene, Math.min(Math.max(0, dt), EFFECT_DT_MAX_SEC));
+
     this.context.clearRect(0, 0, this.width, this.height);
-    this.drawScene();
-    this.drawOpponent();
-    this.drawTable();
-    this.drawMark();
-    this.drawPlayerContactGuide();
-    this.drawBall();
-    this.drawPlayerPaddle();
-    this.drawDebugStroke();
+    for (const step of renderOrder(scene, this.effects)) {
+      this.runStep(step, scene);
+    }
+
+    this.syncDebugMetrics(scene, performance.now() - started);
   }
 
   public destroy(): void {
     window.removeEventListener("resize", this.resize);
     window.visualViewport?.removeEventListener("resize", this.resize);
-    window.removeEventListener(
-      "orientationchange",
-      this.onOrientationChange,
+    window.removeEventListener("orientationchange", this.onOrientationChange);
+  }
+
+  private get surface(): SceneSurface {
+    return {
+      context: this.context,
+      camera: this.camera,
+      width: this.width,
+      height: this.height,
+    };
+  }
+
+  private runStep(step: RenderStep, scene: RenderScene): void {
+    switch (step) {
+      case "backdrop":
+        this.paintLayer(this.backdropLayer, (context, width, height) => {
+          drawEnvironment({
+            context,
+            camera: this.camera,
+            width,
+            height,
+          });
+        });
+        return;
+      case "opponent":
+        drawOpponent(this.surface, scene, {
+          lean: this.opponentLean,
+          sway: this.policy.opponentIdleSway
+            ? Math.sin(
+                scene.simulationTime * Math.PI * 2 * OPPONENT_SWAY_HZ,
+              ) * OPPONENT_SWAY_AMP
+            : 0,
+        });
+        return;
+      case "table":
+        this.paintLayer(this.tableLayer, (context, width, height) => {
+          drawTableLayer({ context, camera: this.camera, width, height });
+        });
+        return;
+      case "serveZone":
+        drawServeZone(
+          this.surface,
+          SERVE_ZONE_Z[scene.game.selectedServeLength],
+        );
+        return;
+      case "mark":
+        drawMark(this.surface, scene);
+        return;
+      case "contactGuide":
+        drawPlayerContactGuide(this.surface, scene);
+        return;
+      case "ballShadow":
+        drawBallShadow(this.surface, scene);
+        return;
+      case "trail":
+        drawTrail(this.surface, scene);
+        return;
+      case "ball":
+        drawBall(this.surface, scene, this.smashGlowAlpha(scene));
+        return;
+      case "deadBall":
+        if (this.effects.deadBall) {
+          drawDeadBall(
+            this.surface,
+            this.effects.deadBall,
+            this.effects.simulationTime,
+          );
+        }
+        return;
+      case "net":
+        drawNetMesh(this.surface, this.effects.netWobble);
+        return;
+      case "effects":
+        drawEffects(this.surface, this.effects);
+        return;
+      case "playerPaddle":
+        drawPlayerPaddle(this.surface, scene);
+        return;
+      case "debugStroke":
+        drawDebugStroke(this.surface, scene);
+    }
+  }
+
+  private paintLayer(
+    cache: LayerCache,
+    draw: (
+      context: CanvasRenderingContext2D,
+      width: number,
+      height: number,
+    ) => void,
+  ): void {
+    const image = cache.ensure(this.width, this.height, this.dpr, draw);
+    if (!image) return;
+    this.context.drawImage(image, 0, 0, this.width, this.height);
+  }
+
+  /** §5.4.5: スマッシュ可能時のグロー。reduced-motion では脈動せず alpha 0.30 固定。 */
+  private smashGlowAlpha(scene: RenderScene): number {
+    if (!scene.smashable) return 0;
+    if (!this.policy.smashGlowPulse) return 0.3;
+    return (
+      0.3 +
+      0.05 * Math.sin(scene.simulationTime * Math.PI * 2 * SMASH_GLOW_HZ)
     );
+  }
+
+  /** §5.6: 構えの傾き。描画専用の状態で、OpponentAi.state は読み取りだけ。 */
+  private updateOpponentLean(scene: RenderScene, dt: number): void {
+    const target =
+      scene.ball.live && scene.ball.hitter === "P"
+        ? clamp(
+            (scene.ball.x - scene.opponent.x) * OPPONENT_LEAN_GAIN,
+            -OPPONENT_LEAN_MAX,
+            OPPONENT_LEAN_MAX,
+          )
+        : 0;
+    this.opponentLean = moveToward(
+      this.opponentLean,
+      target,
+      OPPONENT_LEAN_SPEED * dt,
+    );
+  }
+
+  /** §5.11.2: `?debugInput=1` のときだけ計測を dataset へ出す。製品既定経路では計測しない。 */
+  private syncDebugMetrics(scene: RenderScene, elapsedMs: number): void {
+    if (!scene.debugInput) return;
+    const body = document.body;
+    body.dataset.particlesLive = String(this.effects.particles.length);
+    body.dataset.ringsLive = String(this.effects.rings.length);
+    body.dataset.effectsSimTime = this.effects.simulationTime.toFixed(3);
+    body.dataset.deadBall = this.effects.deadBall ? "1" : "0";
+    this.renderSamples.push(elapsedMs);
+    if (this.renderSamples.length < RENDER_SAMPLE_WINDOW) return;
+    const sorted = [...this.renderSamples].sort((a, b) => a - b);
+    this.renderSamples.length = 0;
+    const at = (ratio: number): string =>
+      (
+        sorted[
+          Math.min(
+            sorted.length - 1,
+            Math.max(0, Math.ceil(ratio * sorted.length) - 1),
+          )
+        ] ?? 0
+      ).toFixed(3);
+    body.dataset.renderMsP50 = at(0.5);
+    body.dataset.renderMsP95 = at(0.95);
   }
 
   private readonly resize = (): void => {
     const coarsePointer =
       window.matchMedia?.("(pointer: coarse)").matches ?? false;
-    this.dpr = Math.min(
-      coarsePointer ? 2 : 3,
-      window.devicePixelRatio || 1,
-    );
+    this.dpr = Math.min(coarsePointer ? 2 : 3, window.devicePixelRatio || 1);
     this.width = this.canvas.clientWidth;
     this.height = this.canvas.clientHeight;
     const nextWidth = Math.round(this.width * this.dpr);
@@ -110,743 +297,4 @@ export class Renderer {
     this.resize();
     window.setTimeout(this.resize, 250);
   };
-
-  private project(x: number, y: number, z: number): ProjectedPoint {
-    return projectWorldPoint(this.camera, x, y, z);
-  }
-
-  private quad(
-    first: ProjectedPoint,
-    second: ProjectedPoint,
-    third: ProjectedPoint,
-    fourth: ProjectedPoint,
-    fill: string | CanvasGradient,
-  ): void {
-    const context = this.context;
-    context.beginPath();
-    context.moveTo(first.x, first.y);
-    context.lineTo(second.x, second.y);
-    context.lineTo(third.x, third.y);
-    context.lineTo(fourth.x, fourth.y);
-    context.closePath();
-    context.fillStyle = fill;
-    context.fill();
-  }
-
-  private drawScene(): void {
-    const context = this.context;
-    const horizon = this.camera.cy;
-    let gradient = context.createLinearGradient(0, 0, 0, horizon);
-    gradient.addColorStop(0, "#8d8778");
-    gradient.addColorStop(0.55, "#bdb5a4");
-    gradient.addColorStop(1, "#d6cfbe");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, this.width, horizon + 1);
-
-    context.fillStyle = "rgba(255,246,220,.22)";
-    for (let index = 0; index < 4; index += 1) {
-      const x = this.width * (0.14 + index * 0.24);
-      context.fillRect(
-        x - this.width * 0.055,
-        horizon * 0.1,
-        this.width * 0.11,
-        5,
-      );
-    }
-
-    const waistHeight = Math.max(10, this.height * 0.028);
-    context.fillStyle = "#7e786a";
-    context.fillRect(0, horizon - waistHeight, this.width, waistHeight);
-    context.fillStyle = "rgba(255,255,255,.10)";
-    context.fillRect(0, horizon - waistHeight, this.width, 2);
-
-    gradient = context.createLinearGradient(0, horizon, 0, this.height);
-    gradient.addColorStop(0, "#a67c3f");
-    gradient.addColorStop(0.45, "#c4934c");
-    gradient.addColorStop(1, "#d9a960");
-    context.fillStyle = gradient;
-    context.fillRect(0, horizon, this.width, this.height - horizon);
-
-    context.strokeStyle = "rgba(120,80,32,.20)";
-    context.lineWidth = 1;
-    for (let index = -12; index <= 12; index += 1) {
-      const x = index * 46;
-      const near = this.project(x, FLOOR, -300);
-      const far = this.project(x, FLOOR, 1500);
-      context.beginPath();
-      context.moveTo(near.x, near.y);
-      context.lineTo(far.x, far.y);
-      context.stroke();
-    }
-
-    context.strokeStyle = "rgba(120,80,32,.13)";
-    for (let z = -260; z < 1400; z += 180) {
-      const left = this.project(-900, FLOOR, z);
-      const right = this.project(900, FLOOR, z);
-      context.beginPath();
-      context.moveTo(left.x, left.y);
-      context.lineTo(right.x, right.y);
-      context.stroke();
-    }
-
-    context.strokeStyle = "rgba(226,232,238,.34)";
-    context.lineWidth = 2;
-    for (const x of [-330, 330]) {
-      const near = this.project(x, FLOOR, -320);
-      const far = this.project(x, FLOOR, 900);
-      context.beginPath();
-      context.moveTo(near.x, near.y);
-      context.lineTo(far.x, far.y);
-      context.stroke();
-    }
-
-    const light = context.createRadialGradient(
-      this.width / 2,
-      horizon + (this.height - horizon) * 0.45,
-      10,
-      this.width / 2,
-      horizon + (this.height - horizon) * 0.45,
-      this.width * 0.95,
-    );
-    light.addColorStop(0, "rgba(255,247,225,.16)");
-    light.addColorStop(1, "rgba(0,0,0,0)");
-    context.fillStyle = light;
-    context.fillRect(0, horizon, this.width, this.height - horizon);
-
-    this.drawFence(620);
-    this.drawFence(-560);
-  }
-
-  private drawFence(z: number): void {
-    const context = this.context;
-    const base = this.project(0, FLOOR, z);
-    const top = this.project(0, FLOOR + 75, z);
-    const left = this.project(-460, FLOOR, z);
-    const right = this.project(460, FLOOR, z);
-    const height = base.y - top.y;
-    context.fillStyle = "#17635c";
-    context.fillRect(left.x, top.y, right.x - left.x, height);
-    context.fillStyle = "rgba(0,0,0,.18)";
-    context.fillRect(
-      left.x,
-      base.y - height * 0.16,
-      right.x - left.x,
-      height * 0.16,
-    );
-    context.strokeStyle = "rgba(255,255,255,.22)";
-    context.lineWidth = 1.5;
-    context.strokeRect(left.x, top.y, right.x - left.x, height);
-    context.strokeStyle = "rgba(0,0,0,.28)";
-    context.lineWidth = 1;
-    for (let index = 1; index < 9; index += 1) {
-      const x = left.x + ((right.x - left.x) * index) / 9;
-      context.beginPath();
-      context.moveTo(x, top.y);
-      context.lineTo(x, base.y);
-      context.stroke();
-    }
-  }
-
-  private drawTable(): void {
-    const context = this.context;
-    const nearLeft = this.project(-HW, 0, -HL);
-    const nearRight = this.project(HW, 0, -HL);
-    const farRight = this.project(HW, 0, HL);
-    const farLeft = this.project(-HW, 0, HL);
-
-    context.fillStyle = "#1c2733";
-    const legs: readonly (readonly [number, number])[] = [
-      [-HW + 16, -HL + 18],
-      [HW - 16, -HL + 18],
-      [-HW + 16, HL - 18],
-      [HW - 16, HL - 18],
-    ];
-    for (const [x, z] of legs) {
-      const top = this.project(x, -4, z);
-      const bottom = this.project(x, FLOOR, z);
-      const width = Math.max(3, 7 * top.s);
-      context.fillRect(
-        top.x - width / 2,
-        top.y,
-        width,
-        bottom.y - top.y,
-      );
-    }
-
-    const thickNearLeft = this.project(-HW, -5, -HL);
-    const thickNearRight = this.project(HW, -5, -HL);
-    this.quad(
-      nearLeft,
-      nearRight,
-      thickNearRight,
-      thickNearLeft,
-      "#10334a",
-    );
-    this.quad(
-      farLeft,
-      nearLeft,
-      thickNearLeft,
-      this.project(-HW, -5, HL),
-      "#0e2c40",
-    );
-    this.quad(
-      nearRight,
-      farRight,
-      this.project(HW, -5, HL),
-      thickNearRight,
-      "#0e2c40",
-    );
-
-    const tableGradient = context.createLinearGradient(
-      0,
-      farLeft.y,
-      0,
-      nearLeft.y,
-    );
-    tableGradient.addColorStop(0, "#123f5c");
-    tableGradient.addColorStop(0.5, "#1a5276");
-    tableGradient.addColorStop(1, "#1f608a");
-    this.quad(
-      nearLeft,
-      nearRight,
-      farRight,
-      farLeft,
-      tableGradient,
-    );
-
-    const shine = context.createLinearGradient(
-      0,
-      farLeft.y,
-      0,
-      nearLeft.y,
-    );
-    shine.addColorStop(0, "rgba(255,255,255,.10)");
-    shine.addColorStop(0.35, "rgba(255,255,255,.02)");
-    shine.addColorStop(1, "rgba(0,0,0,.10)");
-    this.quad(nearLeft, nearRight, farRight, farLeft, shine);
-
-    const lineWidth = 2;
-    this.band(-HW, -HW + lineWidth, -HL, HL);
-    this.band(HW - lineWidth, HW, -HL, HL);
-    this.band(-HW, HW, -HL, -HL + lineWidth);
-    this.band(-HW, HW, HL - lineWidth, HL);
-    context.globalAlpha = 0.45;
-    this.band(-0.15, 0.15, -HL, HL);
-    context.globalAlpha = 1;
-    this.drawNet();
-  }
-
-  private band(x0: number, x1: number, z0: number, z1: number): void {
-    this.quad(
-      this.project(x0, 0.2, z0),
-      this.project(x1, 0.2, z0),
-      this.project(x1, 0.2, z1),
-      this.project(x0, 0.2, z1),
-      "#f3f6f8",
-    );
-  }
-
-  private drawNet(): void {
-    const context = this.context;
-    const bottomLeft = this.project(-NET_HW, 0, 0);
-    const bottomRight = this.project(NET_HW, 0, 0);
-    const topLeft = this.project(-NET_HW, NET_H, 0);
-    const topRight = this.project(NET_HW, NET_H, 0);
-    this.quad(
-      topLeft,
-      topRight,
-      bottomRight,
-      bottomLeft,
-      "rgba(232,238,244,.30)",
-    );
-    context.strokeStyle = "rgba(255,255,255,.22)";
-    context.lineWidth = 1;
-    for (let index = 1; index < 24; index += 1) {
-      const x = -NET_HW + ((2 * NET_HW) * index) / 24;
-      const bottom = this.project(x, 0, 0);
-      const top = this.project(x, NET_H, 0);
-      context.beginPath();
-      context.moveTo(bottom.x, bottom.y);
-      context.lineTo(top.x, top.y);
-      context.stroke();
-    }
-    this.quad(
-      topLeft,
-      topRight,
-      this.project(NET_HW, NET_H + 1.6, 0),
-      this.project(-NET_HW, NET_H + 1.6, 0),
-      "#ffffff",
-    );
-    context.fillStyle = "#e8eef4";
-    for (const x of [-NET_HW, NET_HW]) {
-      const bottom = this.project(x, 0, 0);
-      const top = this.project(x, NET_H + 2, 0);
-      const width = Math.max(2, 2.4 * bottom.s);
-      context.fillRect(
-        bottom.x - width / 2,
-        top.y,
-        width,
-        bottom.y - top.y,
-      );
-    }
-  }
-
-  private drawOpponent(): void {
-    const scene = this.requiredScene();
-    const opponent = scene.opponent;
-    const context = this.context;
-    const scale = this.project(
-      opponent.x,
-      FLOOR,
-      opponent.z + 16,
-    ).s;
-    const hip = this.project(
-      opponent.x,
-      FLOOR + 46,
-      opponent.z + 16,
-    );
-    const head = this.project(
-      opponent.x,
-      FLOOR + 72,
-      opponent.z + 16,
-    );
-    const feet = this.project(opponent.x, FLOOR, opponent.z + 16);
-
-    context.fillStyle = "rgba(0,0,0,.22)";
-    context.beginPath();
-    context.ellipse(feet.x, feet.y, 22 * scale, 7 * scale, 0, 0, 7);
-    context.fill();
-
-    context.strokeStyle = "#1b2836";
-    context.lineWidth = Math.max(3, 8.5 * scale);
-    context.lineCap = "round";
-    context.beginPath();
-    context.moveTo(hip.x - 7 * scale, hip.y);
-    context.lineTo(feet.x - 11 * scale, feet.y);
-    context.stroke();
-    context.beginPath();
-    context.moveTo(hip.x + 7 * scale, hip.y);
-    context.lineTo(feet.x + 11 * scale, feet.y);
-    context.stroke();
-
-    const torsoWidth = 21 * scale;
-    const torsoHeight = hip.y - head.y - 9 * scale;
-    context.fillStyle = "#e9edf1";
-    this.roundRect(
-      hip.x - torsoWidth / 2,
-      head.y + 9 * scale,
-      torsoWidth,
-      torsoHeight,
-      6 * scale,
-    );
-    context.fill();
-    context.fillStyle = "#c0392b";
-    context.fillRect(
-      hip.x - torsoWidth / 2,
-      head.y + 9 * scale,
-      torsoWidth,
-      Math.max(2, 4 * scale),
-    );
-
-    context.fillStyle = "#2b3a49";
-    context.beginPath();
-    context.arc(head.x, head.y + 3 * scale, 7.5 * scale, 0, 7);
-    context.fill();
-
-    const swing =
-      opponent.swing > 0 ? Math.sin(opponent.swing * Math.PI) : 0;
-    const racketX = opponent.x + 12 + swing * 16;
-    const racketY = FLOOR + 44 + swing * 10;
-    const hand = this.project(racketX, racketY, opponent.z + 10);
-    const armRoot = {
-      x: hip.x + torsoWidth * 0.4,
-      y: head.y + 16 * scale,
-    };
-    context.strokeStyle = "#e9edf1";
-    context.lineWidth = Math.max(2.5, 6 * scale);
-    context.beginPath();
-    context.moveTo(armRoot.x, armRoot.y);
-    context.lineTo(hand.x, hand.y);
-    context.stroke();
-    this.paddle(
-      hand,
-      scale,
-      "#b03a2e",
-      Math.atan2(armRoot.y - hand.y, armRoot.x - hand.x),
-    );
-  }
-
-  private roundRect(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    initialRadius: number,
-  ): void {
-    const context = this.context;
-    const radius = Math.min(initialRadius, width / 2, height / 2);
-    context.beginPath();
-    context.moveTo(x + radius, y);
-    context.lineTo(x + width - radius, y);
-    context.quadraticCurveTo(x + width, y, x + width, y + radius);
-    context.lineTo(x + width, y + height - radius);
-    context.quadraticCurveTo(
-      x + width,
-      y + height,
-      x + width - radius,
-      y + height,
-    );
-    context.lineTo(x + radius, y + height);
-    context.quadraticCurveTo(x, y + height, x, y + height - radius);
-    context.lineTo(x, y + radius);
-    context.quadraticCurveTo(x, y, x + radius, y);
-    context.closePath();
-  }
-
-  private paddle(
-    point: ProjectedPoint,
-    scale: number,
-    color: string,
-    angle: number,
-    bladeAngle = 0,
-    squash = 1,
-    contactFlash = 0,
-  ): void {
-    const context = this.context;
-    const radius = Math.max(6, 9.6 * scale * PADDLE_BLADE_SCALE);
-    const handleWidth = radius * PADDLE_HANDLE_WIDTH;
-    const handleLength = radius * PADDLE_HANDLE_LENGTH;
-    const handleStart = radius * PADDLE_HANDLE_INSET;
-
-    context.save();
-    context.translate(point.x, point.y);
-    context.rotate(angle);
-    this.roundRect(
-      handleStart,
-      -handleWidth / 2,
-      handleLength,
-      handleWidth,
-      handleWidth * 0.35,
-    );
-    context.fillStyle = "#7a4a24";
-    context.fill();
-    context.lineWidth = Math.max(1, radius * 0.1);
-    context.strokeStyle = "rgba(0,0,0,.35)";
-    context.stroke();
-    context.fillStyle = "rgba(255,255,255,.12)";
-    context.fillRect(
-      handleStart + handleLength * 0.55,
-      -handleWidth / 2,
-      handleLength * 0.3,
-      handleWidth,
-    );
-    context.restore();
-
-    context.save();
-    context.translate(point.x, point.y);
-    context.rotate(bladeAngle);
-    context.beginPath();
-    context.ellipse(
-      0,
-      0,
-      radius,
-      radius * 0.94 * squash,
-      0,
-      0,
-      7,
-    );
-    context.fillStyle = color;
-    context.fill();
-    context.lineWidth = Math.max(1.5, radius * 0.14);
-    context.strokeStyle = "rgba(0,0,0,.35)";
-    context.stroke();
-    context.beginPath();
-    context.ellipse(
-      0,
-      -radius * 0.22,
-      radius * 0.62,
-      radius * 0.4 * squash,
-      0,
-      0,
-      7,
-    );
-    context.fillStyle = "rgba(255,255,255,.10)";
-    context.fill();
-    if (contactFlash > 0) {
-      context.beginPath();
-      context.ellipse(0, 0, radius * 1.22, radius * 1.13 * squash, 0, 0, 7);
-      context.strokeStyle = `rgba(255,224,117,${0.85 * contactFlash})`;
-      context.lineWidth = Math.max(2, radius * 0.16);
-      context.stroke();
-    }
-    context.restore();
-  }
-
-  private drawPlayerPaddle(): void {
-    const scene = this.requiredScene();
-    const player = scene.player;
-    const context = this.context;
-    const direct = scene.controlModel === "direct-paddle-v1"
-      ? scene.directPlayerPose
-      : null;
-    const swing =
-      player.swing > 0 ? Math.sin(player.swing * Math.PI) : 0;
-    // 横位置は打球判定と同じ平面 player.z で投影する（viewZ を使わない）。
-    const x = direct?.screenX ?? this.project(player.x, 0, player.z).x;
-    const depth = paddleDepthRatio(player.viewZ);
-    const radius = paddleScreenRadius(this.width, this.height, depth);
-    const y = direct?.screenY ?? clampPaddleScreenY(
-        paddleScreenY(this.height, swing, player.swingType, depth),
-        this.height,
-        radius,
-      );
-
-    const shadowAlpha = 0.28 - swing * 0.16;
-    const shadowRadiusX = radius * (0.9 - swing * 0.2);
-    context.fillStyle = `rgba(0,0,0,${shadowAlpha})`;
-    context.beginPath();
-    context.ellipse(
-      x,
-      paddleShadowY(this.height, depth),
-      shadowRadiusX,
-      radius * 0.28,
-      0,
-      0,
-      7,
-    );
-    context.fill();
-
-    if (scene.smashable) {
-      context.beginPath();
-      context.arc(x, y, radius * 1.55, 0, 7);
-      context.strokeStyle = "rgba(255,194,75,.85)";
-      context.lineWidth = 2.5;
-      context.stroke();
-      context.beginPath();
-      context.arc(x, y, radius * 1.95, 0, 7);
-      context.strokeStyle = "rgba(255,194,75,.22)";
-      context.lineWidth = 5;
-      context.stroke();
-    }
-    const squash = direct ? 1 - Math.abs(direct.tilt) * 0.15 : 1;
-    const bladeAngle = direct?.angle ?? 0;
-    const assist = scene.directPaddleAssist;
-    if (direct && assist?.visible) {
-      try {
-        context.save();
-        context.translate(x, y);
-        context.rotate(bladeAngle);
-        context.beginPath();
-        context.ellipse(
-          0,
-          0,
-          radius * PADDLE_BLADE_SCALE * assist.scale,
-          radius * PADDLE_BLADE_SCALE * 0.94 * squash * assist.scale,
-          0,
-          0,
-          7,
-        );
-        context.strokeStyle = "rgba(255,255,255,.22)";
-        context.lineWidth = Math.max(1.5, radius * 0.08);
-        context.stroke();
-        context.restore();
-      } catch {
-        context.restore();
-      }
-    }
-    if (direct && scene.debugInput && assist) {
-      const visualRx = radius * PADDLE_BLADE_SCALE;
-      const visualRy = visualRx * 0.94 * squash;
-      const projectedBall = this.project(
-        scene.ball.x,
-        scene.ball.y,
-        scene.ball.z,
-      );
-      const ballRadius = Math.max(2, BALL_R * projectedBall.s);
-      context.save();
-      context.translate(x, y);
-      context.rotate(bladeAngle);
-      context.beginPath();
-      context.ellipse(0, 0, visualRx, visualRy, 0, 0, 7);
-      context.strokeStyle = "rgba(126,224,168,.72)";
-      context.lineWidth = 1.5;
-      context.stroke();
-      context.beginPath();
-      context.ellipse(
-        0,
-        0,
-        visualRx * assist.scale + ballRadius,
-        visualRy * assist.scale + ballRadius,
-        0,
-        0,
-        7,
-      );
-      context.strokeStyle = "rgba(255,138,107,.72)";
-      context.stroke();
-      context.restore();
-    }
-    this.paddle(
-      { x, y, s: 1 },
-      radius / 9.6,
-      "#cb4335",
-      direct?.angle ?? paddleHandleAngle(swing, player.swingType),
-      direct?.angle ?? 0,
-      squash,
-      direct?.contactFlash ?? 0,
-    );
-  }
-
-  private drawDebugStroke(): void {
-    const scene = this.requiredScene();
-    if (!scene.debugInput || scene.debugStroke.length < 2) return;
-    const context = this.context;
-    context.save();
-    context.beginPath();
-    scene.debugStroke.forEach((sample, index) => {
-      if (index === 0) context.moveTo(sample.stageX * this.width, sample.stageY * this.height);
-      else context.lineTo(sample.stageX * this.width, sample.stageY * this.height);
-    });
-    context.strokeStyle = "rgba(126,224,168,.8)";
-    context.lineWidth = 2;
-    context.stroke();
-    context.restore();
-  }
-
-  private drawBall(): void {
-    const scene = this.requiredScene();
-    const ball = scene.ball;
-    if (!ball.live && scene.game.phase !== "serve") {
-      return;
-    }
-    const context = this.context;
-    const surfaceY = onTable(ball.x, ball.z) ? 0.4 : FLOOR;
-    const shadow = this.project(ball.x, surfaceY, ball.z);
-    const height = Math.max(0, ball.y - surfaceY);
-    const alpha = Math.max(0.05, 0.3 - height / 420);
-    context.fillStyle = `rgba(0,0,0,${alpha})`;
-    context.beginPath();
-    context.ellipse(
-      shadow.x,
-      shadow.y,
-      (5 + height * 0.035) * shadow.s,
-      (2.4 + height * 0.016) * shadow.s,
-      0,
-      0,
-      7,
-    );
-    context.fill();
-
-    scene.trail.forEach((trailPoint, index) => {
-      const progress = (index + 1) / scene.trail.length;
-      const point = this.project(
-        trailPoint.x,
-        trailPoint.y,
-        trailPoint.z,
-      );
-      context.beginPath();
-      context.arc(
-        point.x,
-        point.y,
-        BALL_R * 3.1 * point.s * progress * 0.8,
-        0,
-        7,
-      );
-      context.fillStyle = `rgba(242,113,28,${0.13 * progress})`;
-      context.fill();
-    });
-
-    const point = this.project(ball.x, ball.y, ball.z);
-    const radius = Math.max(3.6, BALL_R * 3.1 * point.s);
-    const gradient = context.createRadialGradient(
-      point.x - radius * 0.35,
-      point.y - radius * 0.4,
-      radius * 0.1,
-      point.x,
-      point.y,
-      radius,
-    );
-    gradient.addColorStop(0, "#ffd9a8");
-    gradient.addColorStop(0.5, "#f2711c");
-    gradient.addColorStop(1, "#c8560f");
-    context.beginPath();
-    context.arc(point.x, point.y, radius, 0, 7);
-    context.fillStyle = gradient;
-    context.fill();
-
-    const angle = (performance.now() / 1000) * ball.spin * 10;
-    context.strokeStyle = "rgba(255,255,255,.55)";
-    context.lineWidth = Math.max(1, radius * 0.16);
-    context.beginPath();
-    context.arc(point.x, point.y, radius * 0.55, angle, angle + 1.5);
-    context.stroke();
-  }
-
-  private drawMark(): void {
-    const mark = this.requiredScene().mark;
-    if (!mark) {
-      return;
-    }
-    const context = this.context;
-    const point = this.project(mark.x, 0.5, mark.z);
-    const progress = Math.max(0, Math.min(1, mark.t));
-    const radius = (7 + 16 * progress) * point.s;
-    context.strokeStyle = `rgba(255,194,75,${0.25 + 0.5 * (1 - progress)})`;
-    context.lineWidth = 2;
-    context.beginPath();
-    context.ellipse(
-      point.x,
-      point.y,
-      radius,
-      radius * 0.42,
-      0,
-      0,
-      7,
-    );
-    context.stroke();
-  }
-
-  private drawPlayerContactGuide(): void {
-    const scene = this.requiredScene();
-    const guide = scene.playerContactGuide;
-    if (
-      !guide ||
-      scene.game.phase !== "rally" ||
-      !scene.ball.live ||
-      scene.controlModel !== "direct-paddle-v1" ||
-      scene.ball.hitter !== "A" ||
-      scene.ball.bounces < 1 ||
-      scene.ball.vz >= 0
-    ) {
-      return;
-    }
-    const remaining = guide.etaSec - (scene.simulationTime - guide.plannedAt);
-    const alpha = playerContactGuideAlpha(remaining);
-    if (alpha <= 0) return;
-
-    const point = this.project(guide.x, guide.y, guide.z);
-    const radius = clamp(
-      paddleScreenRadius(
-        this.width,
-        this.height,
-        paddleDepthRatio(guide.z),
-      ) * 0.55,
-      7,
-      12,
-    );
-    const context = this.context;
-    context.save();
-    context.strokeStyle = `rgba(126,224,168,${alpha})`;
-    context.lineWidth = Math.max(1.5, radius * 0.16);
-    context.beginPath();
-    context.arc(point.x, point.y, radius, 0, Math.PI * 2);
-    context.stroke();
-    context.restore();
-  }
-
-  private requiredScene(): RenderScene {
-    if (!this.scene) {
-      throw new Error("描画状態が初期化されていません。");
-    }
-    return this.scene;
-  }
 }

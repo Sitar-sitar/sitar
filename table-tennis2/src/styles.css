@@ -169,7 +169,9 @@ body[data-viewport="too-small"] {
 .stage #cv,
 .stage #board,
 .stage #flash,
-.stage #hint {
+.stage #hint,
+.stage #pointBanner,
+.stage #situation {
   position: absolute;
 }
 
@@ -184,10 +186,8 @@ body[data-viewport="too-small"] {
   margin-bottom: 4px;
 }
 
-.stage #hint,
-body:not([data-phase="serve"]) .stage #hint,
-body[data-server="A"] .stage #hint {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+.stage #hint {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
 }
 
 #cv {
@@ -305,38 +305,141 @@ body[data-server="A"] .stage #hint {
   margin-left: 0;
 }
 
+/* v0.3.0 §5.8.1: 打球・サーブ名専用の小型トースト。上部中央の pill。 */
 #flash {
   position: fixed;
-  left: 0;
-  right: 0;
-  top: 34%;
-  text-align: center;
-  font-size: 26px;
+  top: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 76%;
+  padding: 4px 12px;
+  border: 1px solid #26313c;
+  border-radius: 999px;
+  background: rgb(8 13 18 / 72%);
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-align: center;
   pointer-events: none;
   opacity: 0;
-  text-shadow: 0 3px 14px rgb(0 0 0 / 60%);
+  text-shadow: 0 2px 8px rgb(0 0 0 / 60%);
+  backdrop-filter: blur(6px);
 }
 
+/* 状況チップ表示中はトーストを下げる（§5.8.3）。 */
+body[data-situation] #flash {
+  top: 78px;
+}
+
+/* v0.3.0 §5.8.3: デュース／マッチポイントの状況チップ。 */
+#situation {
+  position: fixed;
+  top: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  height: 20px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid #26313c;
+  border-radius: 999px;
+  background: rgb(8 13 18 / 76%);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+body[data-situation="deuce"] #situation {
+  color: #e8eef3;
+}
+
+body[data-situation="match-point-P"] #situation {
+  color: #ffc24b;
+}
+
+body[data-situation="match-point-A"] #situation {
+  color: #ff8a6b;
+}
+
+/* v0.3.0 §5.8.2: 得点者と理由を文字で示すバナー。 */
+#pointBanner {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  width: min(72%, 320px);
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  text-shadow: 0 3px 14px rgb(0 0 0 / 65%);
+}
+
+.point-banner__title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.point-banner__detail {
+  margin-top: 2px;
+  font-size: 13px;
+  color: #cfdae3;
+}
+
+/* v0.3.0 §5.8.4: 得点・ラリー節目のパルス。寸法は変えず transform だけ動かす。 */
+.pulse {
+  animation: hud-pulse 420ms ease-out;
+}
+
+body[data-suspended="true"] .pulse {
+  animation-play-state: paused;
+}
+
+@keyframes hud-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgb(255 194 75 / 0%);
+  }
+
+  45% {
+    transform: scale(1.08);
+    box-shadow: 0 0 18px rgb(255 194 75 / 45%);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgb(255 194 75 / 0%);
+  }
+}
+
+/* v0.3.0 §5.8.5: stage 下端中央の pill。 */
 #hint {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 132px);
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  transform: translateX(-50%);
+  max-width: 88%;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgb(8 13 18 / 70%);
   text-align: center;
-  font-size: 12.5px;
+  font-size: 12px;
   color: #d5e0e8;
   pointer-events: none;
   text-shadow: 0 2px 8px rgb(0 0 0 / 80%);
-  line-height: 1.55;
-  padding: 0 20px;
+  line-height: 1.5;
 }
 
-body:not([data-phase="serve"]) #hint,
-body[data-server="A"] #hint {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+#hint:empty {
+  display: none;
 }
+
 
 .rail-match-tools {
   display: flex;
@@ -503,7 +606,7 @@ button:focus-visible {
   justify-content: center;
   align-items: center;
   padding: 28px 22px;
-  background: rgb(8 12 16 / 86%);
+  background: rgb(8 12 16 / 78%);
   backdrop-filter: blur(10px);
   text-align: center;
   overflow-y: auto;
@@ -608,6 +711,22 @@ h2 {
   font-weight: 800;
   letter-spacing: 0.14em;
   box-shadow: 0 8px 24px rgb(242 113 28 / 28%);
+  transition: transform 0.12s;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+#title h1 {
+  text-shadow: 0 0 24px rgb(242 113 28 / 35%);
+}
+
+/* v0.3.0 §5.10: リザルトの最長ラリー。既存 maxRally の表示のみ。 */
+.result-max-rally {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #9fb0bd;
 }
 
 .btn.ghost {
@@ -936,10 +1055,6 @@ h2 {
   .serve-controls__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-
-  #hint {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 86px);
-  }
 }
 
 @media (max-height: 650px) and (orientation: landscape) {
@@ -998,5 +1113,40 @@ h2 {
 
   #rally {
     font-size: 10px;
+  }
+}
+
+/* v0.3.0 §5.8.1 / §5.8.3: wide では文字と位置を1段大きくする。 */
+@media (min-width: 760px) and (orientation: landscape) {
+  #flash {
+    top: 60px;
+    font-size: 14px;
+  }
+
+  body[data-situation] #flash {
+    top: 86px;
+  }
+
+  #situation {
+    top: 60px;
+  }
+
+  .point-banner__title {
+    font-size: 22px;
+  }
+}
+
+/* v0.3.0 §5.11.1: 装飾的な動きだけを止め、情報的な表示は残す。 */
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+
+  .btn {
+    transition: none;
+  }
+
+  .btn:active {
+    transform: none;
   }
 }
