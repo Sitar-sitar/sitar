@@ -1,0 +1,60 @@
+{
+  "id": "kafka",
+  "name": "カフカ",
+  "rarity": 5,
+  "element": "lightning",
+  "path": "nihility",
+  "faction": "星核ハンター",
+  "releaseVersion": "1.2",
+  "description": "星核ハンターの幹部にして継続ダメージ(DoT)戦術の要。雷属性の感電状態を味方の攻撃で即時トリガーできる。",
+  "lore": "「ピエロのヘッド」として星核ハンターに所属する女性。記憶や運命を見通す能力を持つとされ、星穹列車の行く先々に姿を現わす。ピノコニー事件では事態の裏側を見透かすような立ち回りを見せた。",
+  "stats": {
+    "level80": { "hp": 1163, "atk": 679, "def": 485, "spd": 100, "taunt": 100 }
+  },
+  "skills": [
+    { "type": "basic", "name": "夜鴉の微笑", "description": "単体の敵に攻撃力100%分の雷属性ダメージを与える。" },
+    { "type": "skill", "name": "悲哀の書き付け", "description": "単体の敵に攻撃力160%分の雷属性ダメージを与え、感電DoTを付与する。" },
+    { "type": "ultimate", "name": "薔薇色の諦観", "description": "全体の敵に雷属性ダメージを与え、DoT状態のダメージを即時トリガーする。" },
+    { "type": "talent", "name": "雲上の幕", "description": "味方が敵を攻撃した際、DoT状態の敵に対して自身の追加攻撃を発動することがある。" },
+    { "type": "technique", "name": "影幻の紳士", "description": "秘技で敵を攻撃すると、次の戦闘開始時に感電DoTを付与する。" }
+  ],
+  "eidolons": [
+    { "level": 1, "name": "空の花窗", "description": "必殺技のダメージがアップ。" },
+    { "level": 2, "name": "書簡の微光", "description": "追加攻撃の回数上限がアップ。" },
+    { "level": 3, "name": "旋律の行間", "description": "戦闘スキルのLv+2、最大Lv15。必殺技のLv+2、最大Lv15。" },
+    { "level": 4, "name": "灰羽の頁", "description": "DoT状態の敵への与ダメージがアップ。" },
+    { "level": 5, "name": "紡がれた午後", "description": "通常攻撃のLv+2、最大Lv10。天賦のLv+2、最大Lv15。" },
+    { "level": 6, "name": "完璧な台本", "description": "感電DoTのダメージ倍率が大幅にアップし、継続時間が延長される。" }
+  ],
+  "traces": [
+    { "id": "a2", "name": "残響", "description": "DoT状態の敵への与ダメージが10%アップ。" },
+    { "id": "a4", "name": "冷眼", "description": "感電DoTの基礎ダメージ倍率アップ。" },
+    { "id": "a6", "name": "統率", "description": "味方のDoT発動を即時トリガーする確率アップ。" }
+  ],
+  "builds": [
+    {
+      "name": "DoT編成メインDPS",
+      "description": "DoT連打を味方と合わせて一気に叩き込む。黒天鵞などのDoTサブと組み合わせることを前提にセット構築する。",
+      "lightCones": ["patience-is-all-you-need"],
+      "relicSets": [
+        { "sets": ["band-of-sizzling-thunder"], "note": "雷属性+攻撃力バフで継続火力を確保。" },
+        { "sets": ["sprightly-vonwacq"], "note": "行動値前進でDoTを早期にトリガー。" }
+      ],
+      "mainStats": {
+        "body": ["攻撃力%"],
+        "feet": ["スピード", "攻撃力%"],
+        "sphere": ["雷属性ダメージ"],
+        "rope": ["攻撃力%"]
+      },
+      "subStats": ["攻撃力%", "スピード", "効果命中", "HP%"],
+      "teamComps": [
+        {
+          "name": "カフカDoT編成",
+          "members": ["kafka"],
+          "note": "黒天鵞・花火・ヒーラーを組み合わせる想定。サンプルではカフカ+花火のみを記載。"
+        }
+      ]
+    }
+  ],
+  "tags": ["DoT", "雷DPS", "星核ハンター"]
+}

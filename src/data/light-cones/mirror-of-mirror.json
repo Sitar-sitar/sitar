@@ -1,0 +1,22 @@
+{
+  "id": "mirror-of-mirror",
+  "name": "鏡中の鏡",
+  "rarity": 5,
+  "path": "destruction",
+  "releaseVersion": "1.4",
+  "description": "鏡流の専用光円錐。氷属性ダメージを底上げし、本人の自傷ギミックと噛み合うよう設計されている。",
+  "stats": {
+    "level80": { "hp": 1058, "atk": 582, "def": 396 }
+  },
+  "effect": {
+    "name": "無垢なる者",
+    "descriptions": [
+      { "superimposition": 1, "description": "装備キャラの与える氷属性ダメージが24%アップ。さらに戦闘スキル発動時に会心率が36%アップし、必殺技発動時に攻撃力が24%アップする(2重に重複しない)。" },
+      { "superimposition": 2, "description": "氷属性ダメージ+28%、会心率+42%、攻撃力+28%。" },
+      { "superimposition": 3, "description": "氷属性ダメージ+32%、会心率+48%、攻撃力+32%。" },
+      { "superimposition": 4, "description": "氷属性ダメージ+36%、会心率+54%、攻撃力+36%。" },
+      { "superimposition": 5, "description": "氷属性ダメージ+40%、会心率+60%、攻撃力+40%。" }
+    ]
+  },
+  "source": ["限定光円錐ガチャ"]
+}

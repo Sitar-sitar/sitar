@@ -1,0 +1,60 @@
+{
+  "id": "sparkle",
+  "name": "花火",
+  "rarity": 5,
+  "element": "quantum",
+  "path": "harmony",
+  "faction": "仮面の愚者",
+  "releaseVersion": "2.1",
+  "description": "ピノコニー在住の仮面の愚者。特定の味方を行動前進させ、会心ダメージと与ダメージを大幅にバフする最高峰サポーター。",
+  "lore": "仮面の愚者に属する、素性の掴めない舞台愛好家。ピノコニーの「サウザンド・ファミリー」の名門の生まれとされるが、真偽は仮面の下に隠されたまま。",
+  "stats": {
+    "level80": { "hp": 1047, "atk": 582, "def": 485, "spd": 96, "taunt": 100 }
+  },
+  "skills": [
+    { "type": "basic", "name": "星を映す演目", "description": "単体の敵に攻撃力100%分の量子属性ダメージを与える。" },
+    { "type": "skill", "name": "幻の舞台", "description": "味方1名の行動値を50%前進させ、会心ダメージをバフする。" },
+    { "type": "ultimate", "name": "狂想の宴", "description": "味方全体の与ダメージをアップし、自身のスキルポイントを回復する。" },
+    { "type": "talent", "name": "仮面の恵み", "description": "仮面状態の味方は会心ダメージがアップする。" },
+    { "type": "technique", "name": "舞台裏の仕掛け", "description": "秘技発動後の次の戦闘開始時、味方全体の与ダメージがアップする。" }
+  ],
+  "eidolons": [
+    { "level": 1, "name": "道化の帽子", "description": "戦闘スキルのバフ倍率アップ。" },
+    { "level": 2, "name": "見えざる糸", "description": "必殺技の与ダメージバフ倍率アップ。" },
+    { "level": 3, "name": "演目の最終章", "description": "戦闘スキルのLv+2、最大Lv15。必殺技のLv+2、最大Lv15。" },
+    { "level": 4, "name": "華燭の宴", "description": "スキルポイント回復量アップ。" },
+    { "level": 5, "name": "退場の前に", "description": "通常攻撃のLv+2、最大Lv10。天賦のLv+2、最大Lv15。" },
+    { "level": 6, "name": "幕引きのとき", "description": "戦闘スキルのターゲットの攻撃力も追加でバフする。" }
+  ],
+  "traces": [
+    { "id": "a2", "name": "道化師", "description": "装備光円錐のスキルポイント効果アップ。" },
+    { "id": "a4", "name": "即興劇", "description": "仮面状態の味方の会心ダメージ増加量アップ。" },
+    { "id": "a6", "name": "観客", "description": "戦闘開始時にスキルポイント上限がアップ。" }
+  ],
+  "builds": [
+    {
+      "name": "会心ダメバフサポーター",
+      "description": "メインアタッカーに行動値前進と会心ダメバフを盛り続ける。HP・スピード高めの育成が安定。",
+      "lightCones": ["earthly-escapade"],
+      "relicSets": [
+        { "sets": ["band-of-sizzling-thunder"], "note": "攻撃力バフの繋ぎにも使えるが、味方の属性に合う調和用セットを推奨。" },
+        { "sets": ["sprightly-vonwacq"], "note": "初動の行動前進でサポートを早く回す。" }
+      ],
+      "mainStats": {
+        "body": ["会心ダメージ", "HP%"],
+        "feet": ["スピード"],
+        "sphere": ["HP%"],
+        "rope": ["エネルギー回復効率"]
+      },
+      "subStats": ["スピード", "会心ダメージ", "HP%", "効果抵抗"],
+      "teamComps": [
+        {
+          "name": "鏡流ハイパーキャリー",
+          "members": ["sparkle", "jingliu"],
+          "note": "花火で鏡流の手番を加速しつつ会心ダメをバフ。残り2枠はヒーラーと自由枠。"
+        }
+      ]
+    }
+  ],
+  "tags": ["会心ダメバフ", "行動前進", "調和"]
+}

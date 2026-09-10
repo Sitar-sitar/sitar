@@ -1,0 +1,17 @@
+{
+  "id": "hunter-of-glacial-forest",
+  "name": "氷炎を滅す武将",
+  "rarity": [4, 5],
+  "type": "cavern",
+  "effects": {
+    "twoPiece": "氷属性ダメージを10%アップする。",
+    "fourPiece": "必殺技発動後、2ターンの間、装備キャラの会心ダメージが25%アップする。"
+  },
+  "pieces": [
+    { "slot": "head", "name": "武将の鷹羽兜", "description": "霜の結晶を縫い込んだ戦場用の兜。" },
+    { "slot": "hands", "name": "武将の氷紋手甲", "description": "指先にまで冷気が宿る鋼の手甲。" },
+    { "slot": "body", "name": "武将の氷龍鎧", "description": "鱗状に重ねた氷晶板の胸当て。" },
+    { "slot": "feet", "name": "武将の銀霜脚衣", "description": "霜で覆われた軽装の脚衣。" }
+  ],
+  "source": "擬似花萼(金)・邪祟の深淵"
+}
