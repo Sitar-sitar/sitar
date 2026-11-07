@@ -1,0 +1,14 @@
+{
+  "id": "sprightly-vonwacq",
+  "name": "生命のヴォンウァクの島",
+  "rarity": [4, 5],
+  "type": "planar",
+  "effects": {
+    "twoPiece": "装備キャラのスピードが6%アップする。装備キャラのスピードが120以上の時、戦闘開始時の行動値が40%前進する。"
+  },
+  "pieces": [
+    { "slot": "sphere", "name": "ヴォンウァクの浮遊島・次元球", "description": "大陸が空に浮かぶ縮図。" },
+    { "slot": "rope", "name": "ヴォンウァクの風の縄", "description": "大地を吊るす光の紐。" }
+  ],
+  "source": "疑似形骸の領域・次元界遺物"
+}

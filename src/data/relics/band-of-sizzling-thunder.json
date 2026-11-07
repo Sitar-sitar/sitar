@@ -1,0 +1,17 @@
+{
+  "id": "band-of-sizzling-thunder",
+  "name": "怒りの雷を奏でる楽団",
+  "rarity": [4, 5],
+  "type": "cavern",
+  "effects": {
+    "twoPiece": "雷属性ダメージを10%アップする。",
+    "fourPiece": "戦闘スキル発動後、装備キャラの攻撃力が1ターンの間、20%アップする。"
+  },
+  "pieces": [
+    { "slot": "head", "name": "楽団の紫電マスク", "description": "ステージに立つロッカーの仮面。" },
+    { "slot": "hands", "name": "楽団の電撃ピック", "description": "弦を弾くたびに火花を散らすピック。" },
+    { "slot": "body", "name": "楽団のライブジャケット", "description": "観客の熱狂を吸収する革ジャケット。" },
+    { "slot": "feet", "name": "楽団のリズムブーツ", "description": "拍子を刻むたびに雷を呼ぶブーツ。" }
+  ],
+  "source": "擬似花萼(金)・遺忘の庭"
+}

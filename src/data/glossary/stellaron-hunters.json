@@ -1,0 +1,10 @@
+{
+  "id": "stellaron-hunters",
+  "term": "星核ハンター",
+  "reading": "せいかくはんたー",
+  "category": "faction",
+  "summary": "運命を掴むべく星核を追い続ける組織。カフカや銀狼、ブレイドらが所属する。",
+  "description": "星核ハンターは、銀河に散在する災厄の結晶「星核」を回収・運用することで運命に干渉しようとする少数精鋭の組織。「エレイオ」を指導者とし、運命そのものに抗うことを信条とする。\n\n星穹列車とは時に敵対し、時に利害が一致する複雑な関係にある。",
+  "relatedTerms": ["astral-express"],
+  "relatedCharacters": ["kafka"]
+}
