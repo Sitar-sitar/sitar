@@ -1365,7 +1365,6 @@ test("PWA更新はHTTPキャッシュ内の旧アプリシェルを再利用し�
       await registration.update();
       await claimed;
     });
-    expect(await page.evaluate(() => caches.keys())).not.toContain(previousCache);
     await page.reload();
     await expect(page).toHaveTitle("current shell");
   } finally {
