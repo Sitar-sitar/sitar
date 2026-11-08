@@ -21,13 +21,25 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "mobile-portrait-chromium",
+      grep: /縦専用/u,
+      use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 } },
+    },
+    {
+      name: "mobile-portrait-webkit",
+      grep: /縦専用/u,
+      use: { ...devices["iPhone 13"], viewport: { width: 390, height: 844 } },
+    },
+    {
       name: "desktop-chromium",
+      grepInvert: /縦専用/u,
       use: {
         ...devices["Desktop Chrome"],
       },
     },
     {
       name: "mobile-webkit",
+      grepInvert: /縦専用/u,
       use: {
         ...devices["iPhone 13"],
         viewport: { width: 844, height: 390 },
@@ -35,6 +47,7 @@ export default defineConfig({
     },
     {
       name: "mobile-chromium",
+      grepInvert: /縦専用/u,
       use: {
         ...devices["Pixel 7"],
         viewport: { width: 915, height: 412 },

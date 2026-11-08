@@ -66,6 +66,8 @@ export class Renderer {
   private policy: EffectPolicy = effectPolicy(false);
   private lastSimulationTime = 0;
   private opponentLean = 0;
+  private readonly resizeObserver: ResizeObserver | undefined;
+  private orientationResize: number | undefined;
   private readonly renderSamples: number[] = [];
 
   public constructor(
@@ -79,6 +81,10 @@ export class Renderer {
     }
     this.context = context;
     this.resize();
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(this.resize);
+      this.resizeObserver.observe(canvas);
+    }
     window.addEventListener("resize", this.resize);
     window.visualViewport?.addEventListener("resize", this.resize);
     window.addEventListener("orientationchange", this.onOrientationChange);
@@ -124,6 +130,8 @@ export class Renderer {
   }
 
   public destroy(): void {
+    this.resizeObserver?.disconnect();
+    window.clearTimeout(this.orientationResize);
     window.removeEventListener("resize", this.resize);
     window.visualViewport?.removeEventListener("resize", this.resize);
     window.removeEventListener("orientationchange", this.onOrientationChange);
@@ -295,6 +303,7 @@ export class Renderer {
 
   private readonly onOrientationChange = (): void => {
     this.resize();
-    window.setTimeout(this.resize, 250);
+    window.clearTimeout(this.orientationResize);
+    this.orientationResize = window.setTimeout(this.resize, 250);
   };
 }

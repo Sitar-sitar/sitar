@@ -126,3 +126,15 @@ final result: passed
 ## 実装中に発見し是正した描画欠陥
 
 - **柵と観客帯が床に隠れた**: `drawFloor()` は地平線から画面下端まで塗るが、横画面（844×390）では地平線 `camera.cy ≈ -20.5px` が viewport 上端より上に来るため、床の塗りが画面全体を覆う。初回実装では設計 §5.2 の記述順（観客帯 → 柵 → 床）どおりに描いたため、柵と観客帯が消えた。床を先に描く順序へ是正した（観客帯が柵の後ろに来る前後関係は維持）。
+
+
+## v0.4.0 縦画面
+
+- 390×844 [ラリー](design-qa/v040-rally-portrait-390x844.jpg) / [サーブ](design-qa/v040-serve-portrait-390x844.jpg)
+- [360×664 最小構成のサーブ](design-qa/v040-serve-portrait-360x664.jpg)
+- [430×844 サーブ](design-qa/v040-serve-portrait-430x844.jpg)
+- [820×1180 サーブ](design-qa/v040-serve-portrait-820x1180.jpg)
+
+Chromeで観客席・柵・相手選手を確認。サーブ着地帯は淡いため、長さ切替時のCanvas画素差も確認した（360 / 390 / 430 / 820pxのstageでそれぞれ5,601 / 5,925 / 7,195 / 24,790画素）。
+
+`node scripts/capture-design-qa.mjs --url http://127.0.0.1:4175` で再撮影できます。

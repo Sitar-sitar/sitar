@@ -418,7 +418,8 @@ export class Ui {
     const visible =
       state.phase === "serve" && state.server === "P" && !state.paused;
     this.updateServeZoneAttribute(state);
-    this.serveControls.hidden = !visible;
+    this.serveControls.hidden = !visible && document.body.dataset.viewport !== "portrait";
+    this.serveControls.dataset.active = String(visible);
     document
       .querySelectorAll<HTMLButtonElement>("[data-serve-type]")
       .forEach((button) => {

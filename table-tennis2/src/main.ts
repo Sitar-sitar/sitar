@@ -26,9 +26,11 @@ const canvas = document.getElementById("cv");
 if (!(canvas instanceof HTMLCanvasElement)) {
   throw new Error("#cv Canvasが見つかりません。");
 }
+const appShell = document.getElementById("appShell");
 const viewportGate = document.getElementById("viewportGate");
 const viewportGateMessage = document.getElementById("viewportGateMessage");
 if (
+  !(appShell instanceof HTMLElement) ||
   !(viewportGate instanceof HTMLElement) ||
   !(viewportGateMessage instanceof HTMLElement)
 ) {
@@ -72,6 +74,8 @@ mountFeatures(
   },
 );
 new ViewportController({
+  shell: appShell,
+  onViewportChange: () => game.syncServeControls(),
   gate: viewportGate,
   message: viewportGateMessage,
   onBlockedChange: (blocked) => game.setViewportBlocked(blocked),

@@ -34,7 +34,7 @@ function contactMetrics(width: number, height: number) {
 
 for (const [side, expectedRadiusCm] of [
   [360, 10.03], [375, 10.45], [390, 10.45],
-  [412, 10.45], [430, 10.45], [836, 10.45],
+  [412, 10.45], [430, 10.45], [820, 10.45],
 ] as const) {
   test(`辺長 ${side} の捕球半径と左右到達距離が縦画面の契約を満たす`, () => {
     const { radiusCm, reachCm } = contactMetrics(side, side);

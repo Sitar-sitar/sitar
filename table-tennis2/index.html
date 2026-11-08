@@ -4,20 +4,20 @@
     <meta charset="utf-8">
     <meta
       name="viewport"
-      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
     >
     <meta name="theme-color" content="#0d1218">
     <meta
       name="description"
-      content="スマートフォン横画面で遊べる、軽快な3D卓球ゲーム"
+      content="スマートフォンの縦横どちらでも遊べる、軽快な3D卓球ゲーム"
     >
-    <meta name="application-name" content="卓球 横画面">
+    <meta name="application-name" content="卓球">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     >
-    <meta name="apple-mobile-web-app-title" content="卓球 横">
+    <meta name="apple-mobile-web-app-title" content="卓球">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="format-detection" content="telephone=no">
     <meta name="color-scheme" content="dark">
@@ -35,7 +35,7 @@
       href="./icons/apple-touch-icon.png"
       vite-ignore
     >
-    <title>卓球 横画面</title>
+    <title>卓球</title>
   </head>
   <body
     data-phase="title"
@@ -54,15 +54,14 @@
       hidden
     >
       <div class="viewport-gate__card">
-        <div class="viewport-gate__device" aria-hidden="true">↻</div>
-        <h1 id="viewportGateTitle">横画面でプレイ</h1>
-        <p id="viewportGateMessage">端末を横向きにしてください</p>
+        <h1 id="viewportGateTitle">画面サイズが足りません</h1>
+        <p id="viewportGateMessage"></p>
       </div>
     </section>
     <main id="appShell" class="app-shell">
       <aside id="leftRail" class="app-rail app-rail--left" aria-label="試合情報">
         <div class="rail-brand">TABLE TENNIS 2</div>
-        <p>横画面モード</p>
+        <p>縦横対応</p>
         <div id="hudSecondary" class="feature-slot" data-feature-slot="hud-secondary">
           <section class="match-context" aria-label="現在のサーバー">
             <span class="match-context__label">サーブ</span>
@@ -241,7 +240,7 @@
     <div id="overlaySlot" data-feature-slot="overlay">
       <div class="ov show" id="title">
       <div class="eyebrow">TABLE TENNIS</div>
-      <h1>卓球 横</h1>
+      <h1>卓球</h1>
       <div class="sub">体育館の一台。11点先取、2点差で勝ち。</div>
       <div id="playerBar" class="player-bar">
         <div class="player-bar__summary">

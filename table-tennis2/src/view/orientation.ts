@@ -1,15 +1,16 @@
 import {
   evaluateViewport,
   isViewportBlocked,
+  portraitStageSide,
   type ViewportSize,
   type ViewportState,
 } from "./layout.ts";
 
-type ActiveViewportState = Exclude<ViewportState, "portrait" | "portrait-too-small"> | "portrait-blocked";
-
 interface ViewportControllerOptions {
+  readonly shell: HTMLElement;
   readonly gate: HTMLElement;
   readonly message: HTMLElement;
+  readonly onViewportChange: (state: ViewportState) => void;
   readonly onBlockedChange: (blocked: boolean) => void;
 }
 
@@ -25,7 +26,7 @@ function currentViewport(): ViewportSize {
 
 export class ViewportController {
   private frame = 0;
-  private state: ActiveViewportState | null = null;
+  private state: ViewportState | null = null;
 
   public constructor(private readonly options: ViewportControllerOptions) {
     window.addEventListener("resize", this.schedule);
@@ -54,25 +55,37 @@ export class ViewportController {
   };
 
   private update(): void {
-    const size = currentViewport();
-    // 13-2 で content を #appShell の content box へ差し替える（設計 §4.2）。
-    const classification = evaluateViewport({ viewport: size, content: size });
-    // Keep the existing gate until the portrait stage and controls are ready.
-    const next = classification === "portrait" || classification === "portrait-too-small"
-      ? "portrait-blocked"
-      : classification;
-    if (next === this.state) {
-      return;
+    const viewport = currentViewport();
+    const { shell, gate, message } = this.options;
+    const padding = getComputedStyle(shell);
+    const content = {
+      width: shell.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight),
+      height: shell.clientHeight - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom),
+    };
+    const next = evaluateViewport({ viewport, content });
+    const { dataset, style } = document.body;
+    dataset.viewport = next;
+    if (next === "portrait") {
+      style.setProperty("--portrait-stage-side", `${portraitStageSide(content)}px`);
+    } else {
+      style.removeProperty("--portrait-stage-side");
     }
-    this.state = next;
-    document.body.dataset.viewport = next;
-    const blocked = next === "portrait-blocked" || isViewportBlocked(next);
-    this.options.gate.hidden = !blocked;
-    this.options.gate.setAttribute("aria-hidden", String(!blocked));
-    this.options.message.textContent =
-      next === "portrait-blocked"
-        ? "端末を横向きにしてください"
-        : `画面が小さすぎます（現在 ${size.width}×${size.height}、必要 568×320）`;
-    this.options.onBlockedChange(blocked);
+
+    const blocked = isViewportBlocked(next);
+    gate.hidden = !blocked;
+    gate.setAttribute("aria-hidden", String(!blocked));
+    if (next === "portrait-too-small") {
+      message.textContent = `画面が小さすぎます（現在 ${content.width}×${content.height}、縦画面は安全領域を除いて 360×664 以上が必要）`;
+    } else if (next === "too-small") {
+      message.textContent = `画面が小さすぎます（現在 ${viewport.width}×${viewport.height}、横画面は 568×320 以上が必要）`;
+    } else {
+      message.textContent = "";
+    }
+
+    if (next !== this.state) {
+      this.state = next;
+      this.options.onBlockedChange(blocked);
+      this.options.onViewportChange(next);
+    }
   }
 }
