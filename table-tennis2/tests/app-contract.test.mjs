@@ -79,7 +79,7 @@ test("Service Workerはアプリシェルをキャッシュする", async () => 
   const serviceWorker = await readFile(resolve(root, "sw.js"), "utf8");
 
   assert.match(serviceWorker, /caches\.open\(CACHE_NAME\)/u);
-  assert.match(serviceWorker, /cache\.addAll\(APP_SHELL\)/u);
+  assert.match(serviceWorker, /cache\.addAll\(\s*APP_SHELL\.map/u);
   assert.match(serviceWorker, /cache\.match\(event\.request\)/u);
   assert.match(serviceWorker, /cache\.match\("\.\/index\.html"\)/u);
   assert.doesNotMatch(serviceWorker, /caches\.match\(/u);

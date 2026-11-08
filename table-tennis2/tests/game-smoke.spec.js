@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 
 import { expect, test } from "@playwright/test";
 
@@ -1325,4 +1326,46 @@ test("縦専用 最小寸法と同じ分類内のリサイズを反映する", a
     await expect(page.locator("#start")).toBeHidden();
   }
   expect(issues).toEqual([]);
+});
+
+test("PWA更新はHTTPキャッシュ内の旧アプリシェルを再利用しない", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop-chromium", "HTTPキャッシュ回帰はChromiumで検証");
+  const worker = readFileSync(new URL("../sw.js", import.meta.url), "utf8");
+  const previousCache = "table-tennis2-v0.3.0";
+  let updated = false;
+  const server = createServer((request, response) => {
+    if (request.url === "/sw.js") {
+      response.setHeader("Content-Type", "application/javascript");
+      response.setHeader("Cache-Control", "no-cache");
+      response.end(updated ? worker : worker
+        .replace(EXPECTED_CACHE_NAME, previousCache)
+        .replace(/APP_SHELL\.map\(.*\)/u, "APP_SHELL"));
+      return;
+    }
+    response.setHeader("Content-Type", "text/html");
+    response.setHeader("Cache-Control", "max-age=600");
+    response.end(updated ? "<title>current shell</title>" : "<title>previous shell</title>");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+    });
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    await page.reload();
+    await expect(page).toHaveTitle("previous shell");
+    updated = true;
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.update();
+    });
+    await page.waitForFunction(async (oldCache) => !(await caches.keys()).includes(oldCache), previousCache);
+    await page.reload();
+    await expect(page).toHaveTitle("current shell");
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
