@@ -197,6 +197,10 @@ export class Game {
     this.currentPlayer = player;
   }
 
+  public syncServeControls(): void {
+    this.ui.updateServeControls(this.state);
+  }
+
   public setViewportBlocked(blocked: boolean): void {
     this.setSuspensionReason("viewportBlocked", blocked);
   }

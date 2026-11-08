@@ -57,6 +57,7 @@ const allIssues = [];
 for (const [viewport, label] of [
   [WIDE, "wide-844x390"],
   [COMPACT, "compact-568x320"],
+  [{ width: 390, height: 844 }, "portrait-390x844"],
 ]) {
   const { context, page, consoleIssues } = await openPage(viewport, AI_SERVE_SEED);
   await page.goto(`${baseUrl}/`);
@@ -67,7 +68,7 @@ for (const [viewport, label] of [
     { timeout: 10_000 },
   );
   await page.waitForTimeout(420);
-  await shot(page, `v030-rally-${label}`);
+  await shot(page, `${label.startsWith("portrait") ? "v040" : "v030"}-rally-${label}`);
   allIssues.push(...consoleIssues);
   await context.close();
 }
@@ -76,6 +77,10 @@ for (const [viewport, label] of [
 for (const [viewport, label] of [
   [WIDE, "wide-844x390"],
   [COMPACT, "compact-568x320"],
+  [{ width: 390, height: 844 }, "portrait-390x844"],
+  [{ width: 360, height: 664 }, "portrait-360x664"],
+  [{ width: 430, height: 844 }, "portrait-430x844"],
+  [{ width: 820, height: 1180 }, "portrait-820x1180"],
 ]) {
   const { context, page, consoleIssues } = await openPage(
     viewport,
@@ -90,7 +95,7 @@ for (const [viewport, label] of [
   );
   await page.locator('[data-serve-length="long"]').click();
   await page.waitForTimeout(200);
-  await shot(page, `v030-serve-${label}`);
+  await shot(page, `${label.startsWith("portrait") ? "v040" : "v030"}-serve-${label}`);
   allIssues.push(...consoleIssues);
   await context.close();
 }

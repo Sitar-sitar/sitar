@@ -46,8 +46,13 @@ const childPackage = JSON.parse(
 const rootCacheName = `table-tennis-v${rootPackage.version}`;
 const childCacheName = `table-tennis2-v${childPackage.version}`;
 
-assert.match(rootHtml, /<title>卓球<\/title>/u);
-assert.match(childHtml, /<title>卓球 横画面<\/title>/u);
+for (const [appPath, html] of [[".", rootHtml], ["table-tennis2", childHtml]]) {
+  const manifest = JSON.parse(
+    await readFile(resolve(siteRoot, appPath, "manifest.webmanifest"), "utf8"),
+  );
+  assert.ok(typeof manifest.name === "string" && manifest.name.length > 0);
+  assert.equal(html.match(/<title>([^<]*)<\/title>/u)?.[1], manifest.name, appPath);
+}
 assert.match(rootWorker, /CHILD_APP_PATH/u);
 assert.ok(rootWorker.includes(rootCacheName), `root cache missing: ${rootCacheName}`);
 assert.ok(childWorker.includes(childCacheName), `child cache missing: ${childCacheName}`);

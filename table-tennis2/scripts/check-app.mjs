@@ -441,8 +441,8 @@ for (const field of ["name", "short_name", "start_url", "display", "icons"]) {
 if (!Array.isArray(manifest.icons) || manifest.icons.length === 0) {
   fail("manifest.webmanifest にアイコンがありません。");
 }
-if (manifest.orientation !== "landscape") {
-  fail("manifest.webmanifest のorientationは landscape にしてください。");
+if (manifest.orientation !== "any") {
+  fail("manifest.webmanifest のorientationは any にしてください。");
 }
 if (manifest.start_url !== "./" || manifest.scope !== "./") {
   fail("manifest.webmanifest のstart_urlとscopeは新URL配下の ./ にしてください。");

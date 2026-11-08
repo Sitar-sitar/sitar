@@ -74,7 +74,7 @@ body {
   color: #b9c7d2;
 }
 
-body[data-viewport="portrait-blocked"],
+body[data-viewport="portrait-too-small"],
 body[data-viewport="too-small"] {
   overflow: hidden;
 }
@@ -1149,4 +1149,60 @@ h2 {
   .btn:active {
     transform: none;
   }
+}
+
+body[data-viewport="portrait"] .app-shell {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 304px;
+  align-items: start;
+  justify-items: center;
+}
+
+body[data-viewport="portrait"] #stage {
+  width: var(--portrait-stage-side);
+  height: var(--portrait-stage-side);
+}
+
+body[data-viewport="portrait"] .app-rail--right {
+  width: 100%;
+  height: 304px;
+}
+
+body[data-viewport="portrait"] .app-rail--right,
+body[data-viewport="portrait"][data-phase="serve"][data-server="P"] .app-rail--right {
+  gap: 8px;
+  padding: 8px;
+}
+
+body[data-viewport="portrait"] .rail-match-tools,
+body[data-viewport="portrait"][data-phase="serve"][data-server="P"] .rail-match-tools {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+body[data-viewport="portrait"] :is(.rail-action, .play-status) {
+  width: auto;
+  min-width: 44px;
+  flex: 1 1 0;
+}
+
+body[data-viewport="portrait"] .play-status,
+body[data-viewport="portrait"][data-phase="serve"][data-server="P"] .play-status {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 5px 8px;
+  border: 1px solid #26313c;
+  font-size: 10px;
+  line-height: normal;
+}
+
+body[data-viewport="portrait"][data-phase="serve"][data-server="P"] .rail-action--secondary {
+  display: inline-block;
+}
+
+body[data-viewport="portrait"] .serve-controls[data-active="false"] {
+  pointer-events: none;
+  opacity: .45;
 }

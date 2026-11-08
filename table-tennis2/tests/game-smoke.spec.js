@@ -60,7 +60,7 @@ async function expectServeControlsWithinRightRail(page) {
 test("タイトルから試合を開始できる", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page).toHaveTitle("卓球 横画面");
+  await expect(page).toHaveTitle("卓球");
   await expect(page.locator("#title")).toHaveClass(/show/u);
   await expect(page.locator("#cv")).toBeVisible();
 
@@ -476,7 +476,7 @@ test("PWA登録とオフライン用キャッシュを確認できる", async ({
   await context.setOffline(true);
   await page.reload();
 
-  await expect(page).toHaveTitle("卓球 横画面");
+  await expect(page).toHaveTitle("卓球");
   await expect(page.locator("#playerName")).toHaveText("ゲスト");
   await expect(page.locator("#openStats")).toBeEnabled();
   expect(consoleFailures).toEqual([]);
@@ -917,15 +917,15 @@ test("pagehideからpageshowへ復帰してもAIサーブは一度だけ始ま�
     .toBe(1);
 });
 
-test("縦画面を停止し横画面へ戻すと操作できる", async ({ page }) => {
+test("小さすぎる縦画面を停止し横画面へ戻すと操作できる", async ({ page }) => {
   await page.addInitScript(() => {
     Math.random = () => 0;
   });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 390, height: 663 });
   await page.goto("/");
   await expect(page.locator("#viewportGate")).toBeVisible();
   await expect(page.locator("#viewportGateMessage")).toHaveText(
-    "端末を横向きにしてください",
+    /縦画面は安全領域を除いて 360×664/u,
   );
 
   await page.setViewportSize({ width: 568, height: 320 });
@@ -1117,55 +1117,57 @@ test("E-V5: 状況チップは初期非表示でHUD寸法契約を変えない",
   expect(observed.meta.height).toBeLessThanOrEqual(28);
 });
 
-test("E-V6: 最終得点でもバナーと死球が出てリザルトへ遷移する", async ({
-  page,
-}) => {
-  test.skip(
-    test.info().project.name !== "desktop-chromium",
-    "所要時間のため Desktop Chromium のみ",
-  );
-  test.setTimeout(180_000);
-  await page.addInitScript(() => {
-    Math.random = () => 0.6;
-  });
-  await page.setViewportSize({ width: 844, height: 390 });
-  await page.goto("/?debugInput=1");
-  await page.locator("#start").click();
+for (const portrait of [false, true]) {
+  test(`${portrait ? "縦専用 " : ""}E-V6: 最終得点でもバナーと死球が出てリザルトへ遷移する`, async ({
+    page,
+  }) => {
+    test.skip(
+      test.info().project.name !== (portrait ? "mobile-portrait-chromium" : "desktop-chromium"),
+      "所要時間のため Desktop Chromium のみ",
+    );
+    test.setTimeout(180_000);
+    await page.addInitScript(() => {
+      Math.random = () => 0.6;
+    });
+    await page.setViewportSize(portrait ? { width: 390, height: 844 } : { width: 844, height: 390 });
+    await page.goto("/?debugInput=1");
+    await page.locator("#start").click();
 
-  // 返球はせず、自分のサーブ順のときだけ台をタップして試合を進め、決着まで持っていく。
-  // （AIサーブの放置だけでは2点でサーブ権がプレイヤーへ移り試合が止まる。）
-  const deadline = Date.now() + 120_000;
-  let phase = "";
-  while (Date.now() < deadline) {
-    phase = await page.evaluate(() => document.body.dataset.phase ?? "");
-    if (phase === "over") break;
-    if (
-      phase === "serve" &&
-      (await page.evaluate(() => document.body.dataset.server)) === "P"
-    ) {
-      await page.locator("#cv").click({ position: { x: 400, y: 260 } });
+    // 返球はせず、自分のサーブ順のときだけ台をタップして試合を進め、決着まで持っていく。
+    // （AIサーブの放置だけでは2点でサーブ権がプレイヤーへ移り試合が止まる。）
+    const deadline = Date.now() + 120_000;
+    let phase = "";
+    while (Date.now() < deadline) {
+      phase = await page.evaluate(() => document.body.dataset.phase ?? "");
+      if (phase === "over") break;
+      if (
+        phase === "serve" &&
+        (await page.evaluate(() => document.body.dataset.server)) === "P"
+      ) {
+        await page.locator("#cv").click({ position: { x: portrait ? 195 : 400, y: 260 } });
+      }
+      await page.waitForTimeout(120);
     }
-    await page.waitForTimeout(120);
-  }
-  expect(phase).toBe("over");
-  const scores = await page.evaluate(() => ({
-    player: Number(document.querySelector("#scP").textContent),
-    opponent: Number(document.querySelector("#scA").textContent),
-  }));
-  expect(Math.max(scores.player, scores.opponent)).toBeGreaterThanOrEqual(11);
+    expect(phase).toBe("over");
+    const scores = await page.evaluate(() => ({
+      player: Number(document.querySelector("#scP").textContent),
+      opponent: Number(document.querySelector("#scA").textContent),
+    }));
+    expect(Math.max(scores.player, scores.opponent)).toBeGreaterThanOrEqual(11);
 
-  // 最終得点でもバナーと死球が出る（phase は既に over）。
-  await expect(page.locator("#pointBanner")).toContainText("の得点");
-  await expect(page.locator("body")).toHaveAttribute("data-dead-ball", "1");
-  await expect(page.locator("#result")).toHaveClass(/show/u, {
-    timeout: 4000,
+    // 最終得点でもバナーと死球が出る（phase は既に over）。
+    await expect(page.locator("#pointBanner")).toContainText("の得点");
+    await expect(page.locator("body")).toHaveAttribute("data-dead-ball", "1");
+    await expect(page.locator("#result")).toHaveClass(/show/u, {
+      timeout: 4000,
+    });
+    await expect(page.locator("#rMaxRally")).toContainText("最長ラリー");
+    // 死球は寿命で必ず消え、over のまま永続しない。
+    await expect(page.locator("body")).toHaveAttribute("data-dead-ball", "0", {
+      timeout: 4000,
+    });
   });
-  await expect(page.locator("#rMaxRally")).toContainText("最長ラリー");
-  // 死球は寿命で必ず消え、over のまま永続しない。
-  await expect(page.locator("body")).toHaveAttribute("data-dead-ball", "0", {
-    timeout: 4000,
-  });
-});
+}
 
 test("E-V7: 一時停止中は視覚時計が止まり情報表示が保持される", async ({
   page,
@@ -1240,4 +1242,70 @@ test("E-V8: 得点パルスはエッジで1回だけ付与される", async ({ p
   await page.waitForTimeout(1_000);
   const adds = await page.evaluate(() => window.__pulseAdds);
   expect(adds.filter((score) => score === firstScore)).toHaveLength(1);
+});
+
+test("縦専用 最小寸法と同じ分類内のリサイズを反映する", async ({ page }) => {
+  const issues = [];
+  page.on("pageerror", (error) => issues.push(error.message));
+  page.on("console", (message) => {
+    if (["error", "warning"].includes(message.type())) issues.push(message.text());
+  });
+  await page.addInitScript(() => { Math.random = () => 0; });
+  await page.goto("/");
+  const stage = page.locator("#stage");
+  const canvas = page.locator("#cv");
+  const gate = page.locator("#viewportGate");
+  await expect(gate).toBeHidden();
+  await expect.poll(async () => (await stage.boundingBox()).width).toBe(390);
+  await page.setViewportSize({ width: 390, height: 663 });
+  await expect(gate).toBeVisible();
+  await expect(page.locator("#viewportGateMessage")).toContainText("360×664");
+  await page.setViewportSize({ width: 430, height: 664 });
+  await expect(gate).toBeHidden();
+  await expect.poll(() => stage.evaluate((el) => [el.clientWidth, el.clientHeight]))
+    .toEqual([360, 360]);
+  await page.setViewportSize({ width: 360, height: 664 });
+  await page.locator("#start").click();
+  await expectServeControlsWithinRightRail(page);
+  const controls = page.locator("#serveControls");
+  const panel = await controls.boundingBox();
+  const checkTools = async () => {
+    for (const tool of await page.locator(".rail-match-tools > *").all()) {
+      await expect(tool).toBeVisible();
+      const box = await tool.boundingBox();
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+  };
+  await checkTools();
+  await canvas.click({ position: { x: 180, y: 250 } });
+  await expect(controls).toHaveAttribute("data-active", "false");
+  await expect(controls).toBeVisible();
+  expect((await controls.boundingBox()).height).toBe(panel.height);
+  await checkTools();
+  for (const overlay of await page.locator("#board, #flash, #situation, #pointBanner").all()) {
+    if (!(await overlay.isVisible())) continue;
+    const box = await overlay.boundingBox();
+    const playfield = await stage.boundingBox();
+    expect(box.x - playfield.x).toBeGreaterThanOrEqual(2);
+    expect(playfield.x + playfield.width - box.x - box.width).toBeGreaterThanOrEqual(2);
+    expect(await overlay.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => canvas.evaluate((el) => [
+    el.clientWidth, el.clientHeight, el.width, el.height,
+  ])).toEqual(await page.evaluate(() => {
+    const dpr = Math.min(matchMedia("(pointer: coarse)").matches ? 2 : 3, devicePixelRatio);
+    return [390, 390, Math.round(390 * dpr), Math.round(390 * dpr)];
+  }));
+  if (test.info().project.name === "mobile-portrait-chromium") {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await expect(page.locator("body")).toHaveAttribute("data-viewport", "wide-landscape");
+    await expect.poll(() => canvas.evaluate((el) => el.clientWidth)).toBe(485);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator("body")).toHaveAttribute("data-viewport", "portrait");
+    await expect.poll(() => canvas.evaluate((el) => el.clientWidth)).toBe(390);
+    await expect(page.locator("#start")).toBeHidden();
+  }
+  expect(issues).toEqual([]);
 });
