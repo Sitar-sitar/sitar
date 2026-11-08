@@ -1359,9 +1359,13 @@ test("PWA更新はHTTPキャッシュ内の旧アプリシェルを再利用し�
     updated = true;
     await page.evaluate(async () => {
       const registration = await navigator.serviceWorker.ready;
+      const claimed = new Promise((resolve) => {
+        navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true });
+      });
       await registration.update();
+      await claimed;
     });
-    await page.waitForFunction(async (oldCache) => !(await caches.keys()).includes(oldCache), previousCache);
+    expect(await page.evaluate(() => caches.keys())).not.toContain(previousCache);
     await page.reload();
     await expect(page).toHaveTitle("current shell");
   } finally {
