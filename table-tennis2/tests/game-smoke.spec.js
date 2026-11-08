@@ -1133,6 +1133,14 @@ for (const portrait of [false, true]) {
     await page.goto("/?debugInput=1");
     await page.locator("#start").click();
 
+    if (portrait) {
+      await expect(page.locator("body")).toHaveAttribute("data-server", "A");
+      await expect(page.locator("#serveControls")).toBeVisible();
+      await expect(page.locator("#serveControls button").first()).toBeDisabled();
+      await expect.poll(() => page.locator("#stage").evaluate((el) => el.clientWidth))
+        .toBe(390);
+    }
+
     // 返球はせず、自分のサーブ順のときだけ台をタップして試合を進め、決着まで持っていく。
     // （AIサーブの放置だけでは2点でサーブ権がプレイヤーへ移り試合が止まる。）
     const deadline = Date.now() + 120_000;
@@ -1278,6 +1286,15 @@ test("縦専用 最小寸法と同じ分類内のリサイズを反映する", a
     }
   };
   await checkTools();
+  await page.locator("#gear").click();
+  await expect(page.locator("#pause")).toHaveClass(/show/u);
+  await expect(controls).toHaveAttribute("data-active", "false");
+  await expect(controls.locator("button").first()).toBeDisabled();
+  expect((await controls.boundingBox()).height).toBe(panel.height);
+  expect((await stage.boundingBox()).width).toBe(360);
+  await checkTools();
+  await page.locator("#resume").click();
+  await expect(controls).toHaveAttribute("data-active", "true");
   await canvas.click({ position: { x: 180, y: 250 } });
   await expect(controls).toHaveAttribute("data-active", "false");
   await expect(controls).toBeVisible();

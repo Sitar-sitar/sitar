@@ -135,4 +135,6 @@ final result: passed
 - [430×844 サーブ](design-qa/v040-serve-portrait-430x844.jpg)
 - [820×1180 サーブ](design-qa/v040-serve-portrait-820x1180.jpg)
 
+Chromeで観客席・柵・相手選手を確認。サーブ着地帯は淡いため、長さ切替時のCanvas画素差も確認した（360 / 390 / 430 / 820pxのstageでそれぞれ5,601 / 5,925 / 7,195 / 24,790画素）。
+
 `node scripts/capture-design-qa.mjs --url http://127.0.0.1:4175` で再撮影できます。
