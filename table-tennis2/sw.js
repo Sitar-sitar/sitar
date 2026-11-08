@@ -14,7 +14,10 @@ const APP_SHELL = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      // Fixed asset URLs can still be fresh in the browser HTTP cache after a deploy.
+      .then((cache) => cache.addAll(
+        APP_SHELL.map((path) => new Request(new URL(path, self.location), { cache: "reload" }))
+      ))
       .then(() => self.skipWaiting())
   );
 });
