@@ -5,6 +5,8 @@ import {
   type ViewportState,
 } from "./layout.ts";
 
+type ActiveViewportState = Exclude<ViewportState, "portrait" | "portrait-too-small"> | "portrait-blocked";
+
 interface ViewportControllerOptions {
   readonly gate: HTMLElement;
   readonly message: HTMLElement;
@@ -23,7 +25,7 @@ function currentViewport(): ViewportSize {
 
 export class ViewportController {
   private frame = 0;
-  private state: ViewportState | null = null;
+  private state: ActiveViewportState | null = null;
 
   public constructor(private readonly options: ViewportControllerOptions) {
     window.addEventListener("resize", this.schedule);
@@ -53,13 +55,18 @@ export class ViewportController {
 
   private update(): void {
     const size = currentViewport();
-    const next = evaluateViewport(size);
+    // 13-2 で content を #appShell の content box へ差し替える（設計 §4.2）。
+    const classification = evaluateViewport({ viewport: size, content: size });
+    // Keep the existing gate until the portrait stage and controls are ready.
+    const next = classification === "portrait" || classification === "portrait-too-small"
+      ? "portrait-blocked"
+      : classification;
     if (next === this.state) {
       return;
     }
     this.state = next;
     document.body.dataset.viewport = next;
-    const blocked = isViewportBlocked(next);
+    const blocked = next === "portrait-blocked" || isViewportBlocked(next);
     this.options.gate.hidden = !blocked;
     this.options.gate.setAttribute("aria-hidden", String(!blocked));
     this.options.message.textContent =
